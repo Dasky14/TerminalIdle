@@ -89,8 +89,23 @@ export function buildScreen(id, shell) {
           { key: 'E', label: 'Export save', action: (s) => s.doExport() },
           { key: 'I', label: 'Import save', action: (s) => s.doImport() },
           { key: 'K', label: 'Backend status', action: (s) => s.pingBackend() },
-          { key: 'T', label: 'Theme', action: (s) => s.themeUsage() },
+          { key: 'S', label: 'Setting commands', action: (s) => s.navigate('settings') },
           { key: 'X', label: 'Reset save', action: (s) => s.confirmReset() },
+          BACK,
+        ],
+      };
+
+    case 'settings':
+      return {
+        title: 'SETTING COMMANDS',
+        body: ['select a setting to print its command usage in the terminal:'],
+        items: [
+          { label: 'Theme', hint: 'change the colour theme', action: (s) => s.themeUsage() },
+          {
+            label: 'Animation',
+            hint: 'enable/disable menu transitions',
+            action: (s) => s.animationUsage(),
+          },
           BACK,
         ],
       };

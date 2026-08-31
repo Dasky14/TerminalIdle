@@ -20,6 +20,9 @@ import { getConfig } from '../config.js';
 
 const THEME_KEY = 'til.theme';
 const THEMES = ['green', 'amber', 'blue', 'white'];
+const ANIM_KEY = 'til.anim';
+const ANIM_ON = ['on', 'enable', 'enabled', 'true', 'yes'];
+const ANIM_OFF = ['off', 'disable', 'disabled', 'false', 'no'];
 const PRINT_DELAY_MS = 12;
 const RULE = '-'.repeat(58);
 const MAX_TERM = 300;
@@ -43,6 +46,7 @@ export class Shell {
 
     this._buildChrome();
     this._applyStoredTheme();
+    this.animEnabled = this._loadAnimation();
 
     // Live screens (stats/inventory/...) redraw instantly when state changes.
     onChange(() => {
@@ -163,7 +167,8 @@ export class Shell {
     const gen = ++this._renderGen;
     this.$out.innerHTML = '';
 
-    if (!animate) {
+    // The animation setting can force an instant redraw.
+    if (!animate || !this.animEnabled) {
       for (const entry of lines) this.$out.appendChild(this._makeNode(entry));
       return;
     }
@@ -218,7 +223,8 @@ export class Shell {
         div.appendChild(hint);
       }
       div.addEventListener('click', () => {
-        this.term(`user@til:~$ ${entry.num}`, 'is-echo');
+        // Echo the item's name — the same text you'd type to run it.
+        this.term(`user@til:~$ ${entry.label.toLowerCase()}`, 'is-echo');
         this.selectByNumber(entry.num);
       });
     } else {
@@ -325,6 +331,39 @@ export class Shell {
       /* ignore */
     }
     document.documentElement.dataset.theme = theme;
+  }
+
+  /** Enable/disable the menu transition animation (instant when disabled). */
+  setAnimation(value) {
+    let next;
+    if (ANIM_ON.includes(value)) next = true;
+    else if (ANIM_OFF.includes(value)) next = false;
+    else {
+      this.term('usage: animation <on|off>', 'is-error');
+      return;
+    }
+    this.animEnabled = next;
+    try {
+      localStorage.setItem(ANIM_KEY, next ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    this.term(`menu animation ${next ? 'on' : 'off'}`, 'is-ok');
+  }
+
+  /** Print how to use the animation command + the current value. */
+  animationUsage() {
+    this.term('usage: animation <on|off>   (e.g. animation off)', 'is-warn');
+    this.term(`current: ${this.animEnabled ? 'on' : 'off'}`);
+  }
+
+  _loadAnimation() {
+    try {
+      const v = localStorage.getItem(ANIM_KEY);
+      return v === null ? true : v === '1';
+    } catch {
+      return true;
+    }
   }
 
   async pingBackend() {

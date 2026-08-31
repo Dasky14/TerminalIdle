@@ -87,6 +87,11 @@ function run(shell, raw) {
       if (!arg) shell.themeUsage();
       else shell.setTheme(arg.toLowerCase());
       return;
+    case 'animation':
+    case 'anim':
+      if (!arg) shell.animationUsage();
+      else shell.setAnimation(arg.toLowerCase());
+      return;
     case 'ping':
       shell.pingBackend();
       return;
@@ -119,6 +124,7 @@ const HELP = [
   '  ls                   list minigame ids',
   '  export | import      download / load a save file',
   '  theme [colour]        show themes, or set one (e.g. theme blue)',
+  '  animation [on|off]    show / set the menu transition animation',
   '  ping                 check the configured backend',
   '  reset                wipe local save',
 ];
