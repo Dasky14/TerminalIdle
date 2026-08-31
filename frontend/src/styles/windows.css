@@ -110,3 +110,96 @@
     transparent 85%
   );
 }
+
+/* ---- Mobile mode: stacked full-width game cards in a scrollable overlay ---- */
+
+/* The overlay only covers the screen while it's showing games. */
+#windows.mobile {
+  display: none;
+}
+#windows.mobile.shown {
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  overflow-y: auto;
+  background: var(--bg, #060807);
+  padding-bottom: 16px;
+}
+
+#windows.mobile .mobile-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg, #060807);
+  border-bottom: 1px solid var(--fg-dim, #1f9c47);
+}
+.mobile-bar__menu {
+  font-family: var(--font, monospace);
+  font-size: 14px;
+  background: transparent;
+  color: var(--fg, #33ff66);
+  border: 1px solid var(--fg-dim, #1f9c47);
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.mobile-bar__title {
+  color: var(--fg-dim, #1f9c47);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-size: 12px;
+  font-family: var(--font, monospace);
+}
+
+/* Cards: full width, in normal flow, no dragging/resizing. */
+#windows.mobile .til-window {
+  position: static !important;
+  width: 100% !important;
+  height: auto !important;
+  left: auto !important;
+  top: auto !important;
+  margin: 0;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  box-shadow: none;
+}
+#windows.mobile .til-window + .til-window {
+  border-top: none;
+}
+#windows.mobile .til-window__body {
+  flex: 0 0 auto;
+  height: 68dvh;
+}
+#windows.mobile .til-window__resize {
+  display: none;
+}
+#windows.mobile .til-window--minimized .til-window__body {
+  display: none;
+}
+
+/* Floating "games (N)" button shown when the overlay is hidden. */
+.games-fab {
+  position: fixed;
+  right: 12px;
+  bottom: 58px;
+  z-index: 940;
+  display: none;
+  font-family: var(--font, monospace);
+  font-size: 14px;
+  background: var(--fg, #33ff66);
+  color: var(--bg, #060807);
+  border: none;
+  border-radius: 20px;
+  padding: 10px 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+.games-fab.shown {
+  display: block;
+}

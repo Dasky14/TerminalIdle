@@ -146,6 +146,36 @@ export class FloatingWindow {
     this.el.style.zIndex = String(z);
   }
 
+  /**
+   * Switch this window between desktop (free-floating, inline-positioned) and
+   * mobile (full-width card; CSS handles layout). The iframe element is never
+   * recreated, so the running game and its bridge are preserved either way.
+   */
+  applyMobile(on) {
+    if (on) {
+      // Remember desktop geometry, then let the mobile CSS take over.
+      this._savedRect = {
+        width: this.el.style.width,
+        height: this.el.style.height,
+        left: this.el.style.left,
+        top: this.el.style.top,
+      };
+      this.el.style.width = '';
+      this.el.style.height = '';
+      this.el.style.left = '';
+      this.el.style.top = '';
+      this.el.style.zIndex = '';
+      this.el.classList.remove('til-window--active');
+    } else {
+      const r = this._savedRect || {};
+      const { size = { w: 480, h: 360 }, position = { x: 80, y: 60 } } = this.opts;
+      this.el.style.width = r.width || `${size.w}px`;
+      this.el.style.height = r.height || `${size.h}px`;
+      this.el.style.left = r.left || `${position.x}px`;
+      this.el.style.top = r.top || `${position.y}px`;
+    }
+  }
+
   close() {
     if (this.opts.onClose) this.opts.onClose(this);
     this.el.remove();

@@ -92,6 +92,11 @@ function run(shell, raw) {
       if (!arg) shell.animationUsage();
       else shell.setAnimation(arg.toLowerCase());
       return;
+    case 'mobileview':
+    case 'mobile':
+      if (!arg) shell.mobileViewUsage();
+      else shell.setMobileView(arg.toLowerCase());
+      return;
     case 'ping':
       shell.pingBackend();
       return;
@@ -125,6 +130,7 @@ const HELP = [
   '  export | import      download / load a save file',
   '  theme [colour]        show themes, or set one (e.g. theme blue)',
   '  animation [on|off]    show / set the menu transition animation',
+  '  mobileview [on|off]   show / set the phone-friendly layout',
   '  ping                 check the configured backend',
   '  reset                wipe local save',
 ];

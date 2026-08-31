@@ -21,6 +21,7 @@ import { getConfig } from '../config.js';
 const THEME_KEY = 'til.theme';
 const THEMES = ['green', 'amber', 'blue', 'white'];
 const ANIM_KEY = 'til.anim';
+const MOBILE_KEY = 'til.mobile';
 const ANIM_ON = ['on', 'enable', 'enabled', 'true', 'yes'];
 const ANIM_OFF = ['off', 'disable', 'disabled', 'false', 'no'];
 const PRINT_DELAY_MS = 12;
@@ -54,6 +55,12 @@ export class Shell {
     this._buildChrome();
     this._applyStoredTheme();
     this.animEnabled = this._loadAnimation();
+
+    // Mobile view: fits the UI to a phone and switches minigame windows from
+    // draggable panels to a stacked overlay. Defaults to on for touch devices.
+    this.mobileView = this._loadMobileView();
+    document.documentElement.dataset.mobile = this.mobileView ? 'on' : 'off';
+    this.windowManager.setMobile(this.mobileView);
 
     // Live screens (stats/inventory/...) redraw instantly when state changes.
     onChange(() => {
@@ -194,8 +201,14 @@ export class Shell {
     const s = this.screen;
     const lines = [];
     if (this.currentId === 'root') {
-      for (const bl of BANNER_LINES) lines.push({ t: 'banner', text: bl });
-      lines.push({ t: 'dim', text: '        terminal idle :: a menu-driven game shell' });
+      const banner = this.mobileView ? COMPACT_BANNER_LINES : BANNER_LINES;
+      for (const bl of banner) lines.push({ t: 'banner', text: bl });
+      lines.push({
+        t: 'dim',
+        text: this.mobileView
+          ? '  a menu-driven game shell'
+          : '        terminal idle :: a menu-driven game shell',
+      });
     } else {
       lines.push({ t: 'head', text: `:: ${s.title}` });
     }
@@ -376,6 +389,45 @@ export class Shell {
     }
   }
 
+  /** Fit the UI to a phone (compact banner + phone-width column + stacked
+   *  game windows), or restore the desktop layout. */
+  setMobileView(value) {
+    let next;
+    if (ANIM_ON.includes(value)) next = true;
+    else if (ANIM_OFF.includes(value)) next = false;
+    else {
+      this.term('usage: mobileview <on|off>', 'is-error');
+      return;
+    }
+    this.mobileView = next;
+    document.documentElement.dataset.mobile = next ? 'on' : 'off';
+    try {
+      localStorage.setItem(MOBILE_KEY, next ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    this.windowManager.setMobile(next);
+    this.term(`mobile view ${next ? 'on' : 'off'}`, 'is-ok');
+    this.render(false);
+  }
+
+  /** Print how to use the mobileview command + the current value. */
+  mobileViewUsage() {
+    this.term('usage: mobileview <on|off>   (fits the UI to a phone)', 'is-warn');
+    this.term(`current: ${this.mobileView ? 'on' : 'off'}`);
+  }
+
+  _loadMobileView() {
+    try {
+      const v = localStorage.getItem(MOBILE_KEY);
+      if (v === '1') return true;
+      if (v === '0') return false;
+    } catch {
+      /* ignore */
+    }
+    return this.isTouch; // default: on for touch devices
+  }
+
   async pingBackend() {
     const { apiBase } = getConfig();
     if (!apiBase) {
@@ -406,6 +458,14 @@ const BANNER = String.raw`
   |_| |_____|_| \_\_|  |_|___|_| \_/_/   \_\_____| |___|____/|_____|_____|
 `;
 const BANNER_LINES = BANNER.split('\n').filter((l) => l.length > 0);
+
+// A compact banner for mobile view — fits a phone width without scrolling.
+const COMPACT_BANNER = String.raw`
+.-----------------------.
+|     TERMINAL IDLE     |
+'-----------------------'
+`;
+const COMPACT_BANNER_LINES = COMPACT_BANNER.split('\n').filter((l) => l.length > 0);
 
 function escapeHtml(s) {
   return String(s)

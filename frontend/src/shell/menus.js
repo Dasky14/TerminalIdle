@@ -106,6 +106,11 @@ export function buildScreen(id, shell) {
             hint: 'enable/disable menu transitions',
             action: (s) => s.animationUsage(),
           },
+          {
+            label: 'Mobile view',
+            hint: 'fit the UI to a phone screen',
+            action: (s) => s.mobileViewUsage(),
+          },
           BACK,
         ],
       };

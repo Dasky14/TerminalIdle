@@ -84,6 +84,16 @@ body::after {
   min-height: 0;
 }
 
+/* Mobile view: constrain to a phone-width column (a no-op on real phones,
+   which are already narrow) and never scroll the menu horizontally. */
+:root[data-mobile="on"] #app {
+  max-width: 480px;
+  margin: 0 auto;
+}
+:root[data-mobile="on"] .term__out {
+  overflow-x: hidden;
+}
+
 /* Three stacked panes. The menu (top) takes the remaining space and scrolls
    internally; the game log and terminal are pinned to fixed rows at the BOTTOM
    so the menu's print animation can never push them around. */
@@ -100,6 +110,8 @@ body::after {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0; /* allow grid panes to shrink; labels/banners clip instead of
+                   widening the column */
 }
 
 .pane--gamelog {
