@@ -172,6 +172,17 @@ body::after {
   color: var(--fg);
 }
 
+/* Wrap real text lines so nothing gets clipped on narrow screens. The banner
+   and rule lines stay `pre` (base rule) so the ASCII art / dividers keep their
+   shape. */
+.term__line--text,
+.term__line--head,
+.term__line--dim,
+.term__line--hint {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .term__line--item {
   cursor: pointer;
   color: var(--fg);
