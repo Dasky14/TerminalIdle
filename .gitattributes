@@ -1,0 +1,13 @@
+# Normalize line endings across platforms.
+* text=auto eol=lf
+
+# Windows batch files need CRLF.
+*.bat text eol=crlf
+
+# Shell scripts must stay LF even on Windows checkouts.
+*.sh text eol=lf
+
+# Treat these as binary (no line-ending munging / diffs).
+*.png binary
+*.jpg binary
+*.ico binary

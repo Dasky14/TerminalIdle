@@ -1,0 +1,25 @@
+# Node / frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# Python / backend
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.env
+
+# Local save exports (users export their own saves; don't commit)
+*.save.json
+terminal-idle-save-*.json
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

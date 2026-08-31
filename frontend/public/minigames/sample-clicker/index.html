@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sample Clicker</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: "Consolas", monospace;
+        background: #0b1013;
+        color: #b6ffce;
+      }
+      .wrap {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 16px;
+        text-align: center;
+      }
+      h1 {
+        font-size: 16px;
+        letter-spacing: 2px;
+        margin: 0;
+        color: #35ff6d;
+      }
+      .ctx {
+        font-size: 12px;
+        color: #1f9c47;
+      }
+      .count {
+        font-size: 40px;
+        font-weight: bold;
+      }
+      button {
+        font-family: inherit;
+        font-size: 15px;
+        padding: 10px 18px;
+        color: #05080a;
+        background: #35ff6d;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:active {
+        transform: translateY(1px);
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+      }
+      .ghost {
+        background: transparent;
+        color: #35ff6d;
+        border: 1px solid #1f9c47;
+      }
+      .hint {
+        font-size: 11px;
+        color: #1f9c47;
+        max-width: 320px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>SAMPLE CLICKER</h1>
+      <div class="ctx" id="ctx">connecting to shell…</div>
+      <div class="count" id="count">0</div>
+      <button id="click">CLICK  (+5 XP, +1 scrap)</button>
+      <div class="row">
+        <button class="ghost" id="bonus">Bonus item (+1 Gear)</button>
+        <button class="ghost" id="close">Close</button>
+      </div>
+      <div class="hint">
+        This demo proves the reward loop: each action calls
+        <code>TIL.sendReward()</code>, and the shell updates your global XP,
+        resources, and inventory. Your click count is persisted via
+        <code>TIL.saveProgress()</code>.
+      </div>
+    </div>
+
+    <!-- Copy of the canonical minigame-sdk/til-sdk.js -->
+    <script src="til-sdk.js"></script>
+    <script>
+      var count = 0;
+      var countEl = document.getElementById('count');
+
+      TIL.onInit(function (ctx) {
+        document.getElementById('ctx').textContent =
+          'player level ' + (ctx.profile && ctx.profile.level) + ' · minigame ' + ctx.minigameId;
+        // Restore our persisted slice if the shell has one.
+        if (ctx.save && typeof ctx.save.count === 'number') {
+          count = ctx.save.count;
+          countEl.textContent = count;
+        }
+      });
+
+      document.getElementById('click').addEventListener('click', function () {
+        count += 1;
+        countEl.textContent = count;
+        TIL.sendReward({ xp: 5, resources: { scrap: 1 } });
+        TIL.saveProgress({ count: count });
+      });
+
+      document.getElementById('bonus').addEventListener('click', function () {
+        TIL.sendReward({ items: [{ id: 'gear', name: 'Gear', qty: 1 }] });
+      });
+
+      document.getElementById('close').addEventListener('click', function () {
+        TIL.close();
+      });
+    </script>
+  </body>
+</html>
