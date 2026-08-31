@@ -6,7 +6,9 @@ export default defineConfig({
   base: './',
   server: {
     port: 5173,
-    open: true,
+    // Don't auto-launch the OS default browser on `npm run dev`; the preview
+    // pane / your existing tab is enough. Set to true if you want it back.
+    open: false,
   },
   build: {
     target: 'es2020',
