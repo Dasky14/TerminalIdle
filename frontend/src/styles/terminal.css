@@ -72,6 +72,7 @@ body::after {
 
 #app {
   height: 100vh;
+  height: 100dvh; /* dvh tracks the visible viewport (mobile chrome/keyboard) */
   padding: 8px 12px;
 }
 
@@ -91,6 +92,7 @@ body::after {
   min-height: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr) 20vh 34vh;
+  grid-template-rows: minmax(0, 1fr) 20dvh 34dvh;
   gap: 6px;
 }
 
@@ -117,6 +119,8 @@ body::after {
   letter-spacing: 2px;
   text-transform: uppercase;
   margin-bottom: 2px;
+  overflow: hidden; /* clip the trailing dashes instead of overflowing the page */
+  white-space: nowrap;
 }
 .pane__label::before {
   content: "-- ";
@@ -258,6 +262,19 @@ body::after {
   50.01%,
   100% {
     opacity: 0;
+  }
+}
+
+/* Smaller type on phones so more fits and the banner needs less scrolling. */
+@media (max-width: 700px) {
+  body {
+    font-size: 13px;
+  }
+  .term__line--banner {
+    font-size: 10px;
+  }
+  .termout {
+    font-size: 13px;
   }
 }
 

@@ -44,6 +44,13 @@ export class Shell {
     this.termLines = []; // bottom terminal transcript
     this.gameLog = []; // middle game-event feed
 
+    // On touch devices we must NOT auto-focus / refocus the input, or the
+    // on-screen keyboard pops open and shoves the fixed-height layout out of
+    // view. Typing still works — the user taps the input line to focus it.
+    this.isTouch =
+      (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
+      navigator.maxTouchPoints > 0;
+
     this._buildChrome();
     this._applyStoredTheme();
     this.animEnabled = this._loadAnimation();
@@ -55,7 +62,7 @@ export class Shell {
       }
     });
 
-    this.$input.focus();
+    if (!this.isTouch) this.$input.focus();
   }
 
   get currentId() {
@@ -89,13 +96,16 @@ export class Shell {
     this.$termout = this.root.querySelector('.termout');
     this.$input = this.root.querySelector('.term__input');
 
-    // Clicking anywhere in the terminal side focuses the input (unless the user
-    // is selecting text). Minigame windows live outside this root, so this never
-    // steals focus from a running game.
-    this.root.addEventListener('click', () => {
-      const sel = window.getSelection && window.getSelection().toString();
-      if (!sel) this.$input.focus();
-    });
+    // On desktop, clicking anywhere in the terminal focuses the input (unless
+    // the user is selecting text) for convenience. On touch we skip this so
+    // tapping a menu option doesn't reopen the keyboard. Minigame windows live
+    // outside this root, so this never steals focus from a running game.
+    if (!this.isTouch) {
+      this.root.addEventListener('click', () => {
+        const sel = window.getSelection && window.getSelection().toString();
+        if (!sel) this.$input.focus();
+      });
+    }
   }
 
   // --- Navigation ----------------------------------------------------------
