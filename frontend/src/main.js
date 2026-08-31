@@ -8,7 +8,6 @@ import { loadConfig } from './config.js';
 import { loadFromStorage, enableAutosave } from './game/save.js';
 import { WindowManager } from './windows/windowManager.js';
 import { Shell } from './shell/shell.js';
-import { attachInput } from './shell/input.js';
 import { attachCommandLine } from './shell/commandLine.js';
 
 async function main() {
@@ -30,7 +29,8 @@ async function main() {
       for (const [k, v] of Object.entries(summary.resources || {})) parts.push(`+${v} ${k}`);
       for (const it of summary.items || []) parts.push(`+${it.qty} ${it.id}`);
       if (parts.length && shell) {
-        shell.print(`[${summary.source}] ${parts.join('  ')}`, 'is-ok');
+        // Minigame rewards go to the running GAME LOG (middle pane).
+        shell.logGame(`[${summary.source}] ${parts.join('  ')}`, 'is-ok');
       }
     },
   });
@@ -38,14 +38,14 @@ async function main() {
   // 4. The menu-driven shell.
   const screenRoot = document.getElementById('screen');
   shell = new Shell(screenRoot, windowManager);
-  attachInput(shell);
   attachCommandLine(shell);
   shell.render();
 
+  // Boot messages are system output → the TERMINAL transcript (bottom pane).
   if (fresh) {
-    shell.print('Welcome! New save created. Open Games to start earning rewards.', 'is-ok');
+    shell.term('welcome — new save created. type a number/name or click to begin.', 'is-ok');
   } else {
-    shell.print('Save loaded.', 'is-ok');
+    shell.term('save loaded.', 'is-ok');
   }
 }
 

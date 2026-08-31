@@ -53,7 +53,7 @@ body {
   text-shadow: var(--glow);
 }
 
-/* Faint CRT scanlines + vignette. Subtle enough to read comfortably. */
+/* Faint CRT scanlines + vignette. */
 body::after {
   content: "";
   position: fixed;
@@ -72,22 +72,64 @@ body::after {
 
 #app {
   height: 100vh;
-  padding: 10px 14px;
+  padding: 8px 12px;
 }
 
-.term {
+/* The shell's container must fill #app so the grid has a definite height to
+   divide; otherwise the menu row collapses to its content and grows as lines
+   print, dragging the panes below it. */
+#screen {
   height: 100%;
+  min-height: 0;
+}
+
+/* Three stacked panes. The menu (top) takes the remaining space and scrolls
+   internally; the game log and terminal are pinned to fixed rows at the BOTTOM
+   so the menu's print animation can never push them around. */
+.shell {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 20vh 34vh;
+  gap: 6px;
+}
+
+.pane {
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 
-/* Printed screen output */
+.pane--gamelog {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 4px;
+}
+
+.pane--term {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 4px;
+}
+
+.pane__label {
+  flex: 0 0 auto;
+  color: var(--fg-dim);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.pane__label::before {
+  content: "-- ";
+}
+.pane__label::after {
+  content: " --------------------------------------------------------------";
+}
+
+/* --- Menu pane (printed screen output) --- */
 .term__out {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: auto;
+  overflow: auto;
   outline: none;
 }
 
@@ -95,75 +137,117 @@ body::after {
   white-space: pre;
   font-variant-ligatures: none;
 }
-
-.term__line--prompt {
-  color: var(--fg-dim);
-}
-
 .term__line--banner {
   color: var(--fg-bright);
   line-height: 1.05;
 }
-
 .term__line--dim,
 .term__line--hint {
   color: var(--fg-dim);
 }
-
 .term__line--head {
   color: var(--fg-bright);
   letter-spacing: 1px;
 }
-
 .term__line--rule {
   color: var(--fg-dim);
 }
-
 .term__line--text {
   color: var(--fg);
 }
 
-/* Menu items — pure ASCII, selection shown with a `>` caret + subtle bar. */
 .term__line--item {
   cursor: pointer;
   color: var(--fg);
   white-space: pre-wrap; /* long descriptions wrap instead of scrolling */
 }
-
-.term__line--item.is-selected {
+.term__line--item:hover {
   background: rgba(255, 255, 255, 0.09);
   color: var(--fg-bright);
 }
-
-.term__caret {
+.term__num {
   color: var(--fg-bright);
 }
-
-.term__itext {
-  color: inherit;
-}
-
 .term__ihint {
   color: var(--fg-dim);
 }
 
-.term__line--item.is-selected .term__ihint {
+/* --- Game log (middle) --- */
+.gamelog {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  font-size: 13px;
+}
+.gl__line {
+  white-space: pre-wrap;
   color: var(--fg);
 }
-
-/* The trailing "ready" prompt + blinking block cursor. */
-.term__ready {
+.gl__line.is-ok {
+  color: var(--fg-bright);
+}
+.gl__empty {
   color: var(--fg-dim);
 }
 
-.term__cursor {
-  display: inline-block;
+/* --- Terminal transcript (bottom) --- */
+.termout {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  font-size: 14px;
+}
+.term__tline {
+  white-space: pre-wrap;
+  color: var(--fg);
+}
+.term__tline.is-echo {
+  color: var(--fg-dim);
+}
+.term__tline.is-ok {
+  color: var(--fg-bright);
+}
+.term__tline.is-warn {
+  color: var(--warn);
+}
+.term__tline.is-error {
+  color: var(--danger);
+}
+
+/* Command line */
+.term__cmdline {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.term__prompt {
+  color: var(--fg-bright);
+  white-space: nowrap;
+}
+.term__input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--fg-bright);
+  font-family: var(--font);
+  font-size: 15px;
+  text-shadow: var(--glow);
+  caret-color: var(--fg);
+}
+.term__blink {
+  flex: 0 0 auto;
   width: 0.6em;
   height: 1.05em;
   background: var(--fg);
-  vertical-align: text-bottom;
   animation: til-blink 1.05s steps(1) infinite;
   box-shadow: var(--glow);
+}
+.term__cmdline:focus-within .term__blink {
+  display: none;
 }
 
 @keyframes til-blink {
@@ -177,83 +261,15 @@ body::after {
   }
 }
 
-/* Async messages (rewards, backend pings, etc.) */
-.term__log {
-  flex: 0 0 auto;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  margin-top: 6px;
-  padding-top: 6px;
-  max-height: 7.5em;
-  overflow-y: auto;
-  font-size: 13px;
-}
-
-.term__logline {
-  white-space: pre-wrap;
-  color: var(--fg-dim);
-}
-.term__logline.is-ok {
-  color: var(--fg-bright);
-}
-.term__logline.is-warn {
-  color: var(--warn);
-}
-.term__logline.is-error {
-  color: var(--danger);
-}
-.term__logline.is-echo {
-  color: var(--fg-dim);
-}
-
-/* Command line */
-.term__cmdline {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.term__prompt {
-  color: var(--fg-bright);
-  white-space: nowrap;
-}
-
-.term__input {
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--fg-bright);
-  font-family: var(--font);
-  font-size: 15px;
-  text-shadow: var(--glow);
-  caret-color: var(--fg);
-}
-
-/* A blinking block that sits at the end of the command line as the cursor. */
-.term__blink {
-  flex: 0 0 auto;
-  width: 0.6em;
-  height: 1.05em;
-  background: var(--fg);
-  animation: til-blink 1.05s steps(1) infinite;
-  box-shadow: var(--glow);
-}
-.term__cmdline:focus-within .term__blink {
-  display: none; /* hide the fake cursor while the native caret is active */
-}
-
 /* Thin phosphor scrollbars */
 .term__out::-webkit-scrollbar,
-.term__log::-webkit-scrollbar {
+.gamelog::-webkit-scrollbar,
+.termout::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 .term__out::-webkit-scrollbar-thumb,
-.term__log::-webkit-scrollbar-thumb {
+.gamelog::-webkit-scrollbar-thumb,
+.termout::-webkit-scrollbar-thumb {
   background: var(--fg-dim);
 }

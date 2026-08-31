@@ -1,13 +1,16 @@
-// The optional typed command line.
+// The terminal command line (bottom pane).
 //
-// Navigation is fully doable with menus (letters / arrows / mouse); this bar is
-// for power users and keeps the terminal feel. Commands are intentionally few.
+// Everything you type is echoed into the terminal transcript, then resolved:
+//   - a bare NUMBER            → activates that menu option
+//   - a reserved command word  → help / clear / play / export / ... (below)
+//   - anything else            → matched against the current menu options by
+//                                name (partial ok), or a top-level screen name
+//
+// So both "2" and "inv"/"inventory" open the Inventory, and plain menu use never
+// needs the mouse.
 
 import { MINIGAMES } from '../minigames/registry.js';
 
-/**
- * @param {import('./shell.js').Shell} shell
- */
 export function attachCommandLine(shell) {
   const input = shell.$input;
   const history = [];
@@ -37,89 +40,85 @@ export function attachCommandLine(shell) {
         historyPos = history.length;
         input.value = '';
       }
-    } else if (e.key === 'Escape') {
-      // Let Escape leave the command line so menu nav resumes.
-      input.blur();
     }
   });
 }
 
 function run(shell, raw) {
+  shell.term(`user@til:~$ ${raw}`, 'is-echo');
   const [cmd, ...args] = raw.split(/\s+/);
   const arg = args.join(' ');
-  shell.print(`$ ${raw}`, 'is-echo');
+  const lc = cmd.toLowerCase();
 
-  switch (cmd.toLowerCase()) {
+  // Reserved command words take priority over name matching.
+  switch (lc) {
     case 'help':
-      HELP.forEach((line) => shell.print(line));
-      break;
+      HELP.forEach((line) => shell.term(line));
+      return;
     case 'clear':
-      shell.log = [];
-      shell.render();
-      break;
+    case 'cls':
+      shell.clearTerm();
+      return;
     case 'back':
       shell.back();
-      break;
+      return;
     case 'home':
-    case 'root':
+    case 'menu':
       shell.goRoot();
-      break;
-    case 'menu': // jump straight to a screen
-      shell.navigate(arg || 'root');
-      break;
-    case 'games':
-      shell.goRoot();
-      shell.navigate('games');
-      break;
-    case 'stats':
-    case 'inventory':
-    case 'resources':
-    case 'system':
-      shell.goRoot();
-      shell.navigate(cmd.toLowerCase());
-      break;
+      return;
     case 'play':
       if (!arg) {
-        shell.print('Usage: play <id>. Try: ' + MINIGAMES.map((m) => m.id).join(', '), 'is-warn');
+        shell.term('usage: play <id>. try: ' + MINIGAMES.map((m) => m.id).join(', '), 'is-warn');
       } else {
         shell.openMinigame(arg);
       }
-      break;
+      return;
     case 'ls':
-      shell.print('Minigames: ' + (MINIGAMES.map((m) => m.id).join(', ') || '(none)'));
-      break;
+    case 'games?':
+      shell.term('minigames: ' + (MINIGAMES.map((m) => m.id).join(', ') || '(none)'));
+      return;
     case 'export':
       shell.doExport();
-      break;
+      return;
     case 'import':
       shell.doImport();
-      break;
+      return;
     case 'theme':
-      shell.toggleTheme();
-      break;
+      if (!arg) shell.themeUsage();
+      else shell.setTheme(arg.toLowerCase());
+      return;
     case 'ping':
       shell.pingBackend();
-      break;
+      return;
     case 'reset':
       shell.confirmReset();
-      break;
+      return;
     default:
-      shell.print(`Unknown command: ${cmd}. Type 'help'.`, 'is-error');
+      break;
   }
+
+  // A bare number selects a menu option.
+  if (args.length === 0 && /^\d+$/.test(cmd)) {
+    shell.selectByNumber(Number(cmd));
+    return;
+  }
+
+  // Otherwise match by name against the current menu / a screen.
+  shell.resolveByName(raw);
 }
 
 const HELP = [
-  'Commands:',
+  'navigation:',
+  '  <number>             select that menu option',
+  '  <name>               select by name, partial ok (e.g. "inv")',
+  '  back / home          go up one menu / to the main menu',
+  'commands:',
   '  help                 show this help',
-  '  clear                clear the log',
-  '  back / home          navigate up / to main menu',
-  '  stats | inventory | resources | system    jump to a screen',
-  '  games                open the games menu',
+  '  clear                clear this terminal',
+  '  play <id>            launch a minigame',
   '  ls                   list minigame ids',
-  '  play <id>            launch a minigame in a window',
   '  export | import      download / load a save file',
-  '  theme                cycle color theme',
+  '  theme [colour]        show themes, or set one (e.g. theme blue)',
   '  ping                 check the configured backend',
   '  reset                wipe local save',
-  'Tip: you can also navigate entirely with letters, arrows+Enter, or the mouse.',
 ];

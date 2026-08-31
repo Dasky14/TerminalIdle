@@ -89,7 +89,7 @@ export function buildScreen(id, shell) {
           { key: 'E', label: 'Export save', action: (s) => s.doExport() },
           { key: 'I', label: 'Import save', action: (s) => s.doImport() },
           { key: 'K', label: 'Backend status', action: (s) => s.pingBackend() },
-          { key: 'T', label: 'Toggle theme', action: (s) => s.toggleTheme() },
+          { key: 'T', label: 'Theme', action: (s) => s.themeUsage() },
           { key: 'X', label: 'Reset save', action: (s) => s.confirmReset() },
           BACK,
         ],
