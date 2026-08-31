@@ -1,29 +1,36 @@
-/* Terminal shell styling. Theme is chosen via <html data-theme="green|amber|blue">. */
+/* Authentic terminal styling. Theme via <html data-theme="green|amber|blue|white">. */
 
 :root {
-  --bg: #05080a;
-  --bg-soft: #0b1013;
-  --fg: #35ff6d;
-  --fg-dim: #1f9c47;
-  --fg-bright: #b6ffce;
-  --accent: #35ff6d;
-  --danger: #ff5f5f;
-  --warn: #ffcf5f;
-  --font: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", monospace;
+  --bg: #060807;
+  --fg: #33ff66;
+  --fg-dim: #1c8a3d;
+  --fg-bright: #b9ffcf;
+  --danger: #ff6b6b;
+  --warn: #ffd166;
+  --font: "Consolas", "SFMono-Regular", "Liberation Mono", "Menlo", "DejaVu Sans Mono",
+    monospace;
+  --glow: 0 0 5px rgba(51, 255, 102, 0.35);
 }
 
 :root[data-theme="amber"] {
-  --fg: #ffb642;
-  --fg-dim: #a06f1c;
-  --fg-bright: #ffe0a8;
-  --accent: #ffb642;
+  --fg: #ffb000;
+  --fg-dim: #a06806;
+  --fg-bright: #ffe6b0;
+  --glow: 0 0 5px rgba(255, 176, 0, 0.35);
 }
 
 :root[data-theme="blue"] {
   --fg: #5fd7ff;
   --fg-dim: #2b7fa0;
-  --fg-bright: #cdefff;
-  --accent: #5fd7ff;
+  --fg-bright: #d6f4ff;
+  --glow: 0 0 5px rgba(95, 215, 255, 0.35);
+}
+
+:root[data-theme="white"] {
+  --fg: #d7d7d7;
+  --fg-dim: #7a7a7a;
+  --fg-bright: #ffffff;
+  --glow: 0 0 4px rgba(220, 220, 220, 0.25);
 }
 
 * {
@@ -37,140 +44,153 @@ body {
 }
 
 body {
-  background:
-    radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 0.03), transparent 60%),
-    var(--bg);
+  background: var(--bg);
   color: var(--fg);
   font-family: var(--font);
   font-size: 15px;
-  line-height: 1.5;
+  line-height: 1.35;
   overflow: hidden;
+  text-shadow: var(--glow);
 }
 
-/* Subtle scanline overlay for the CRT feel. */
+/* Faint CRT scanlines + vignette. Subtle enough to read comfortably. */
 body::after {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0) 0,
-    rgba(0, 0, 0, 0) 2px,
-    rgba(0, 0, 0, 0.18) 3px
-  );
-  mix-blend-mode: multiply;
-  z-index: 1;
+  z-index: 5;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0) 0,
+      rgba(0, 0, 0, 0) 2px,
+      rgba(0, 0, 0, 0.12) 3px
+    ),
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.45) 100%);
 }
 
 #app {
-  position: relative;
   height: 100vh;
-  padding: 16px 20px;
-  overflow: auto;
+  padding: 10px 14px;
 }
 
 .term {
-  max-width: 900px;
-  margin: 0 auto;
-  text-shadow: 0 0 6px rgba(53, 255, 109, 0.25);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.term__banner {
-  color: var(--fg-bright);
-  font-size: 12px;
-  line-height: 1.2;
-  margin: 0 0 12px;
-  white-space: pre;
+/* Printed screen output */
+.term__out {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   overflow-x: auto;
-}
-
-.term__crumbs {
-  color: var(--fg-dim);
-  font-size: 12px;
-  margin-bottom: 4px;
-}
-
-.term__title {
-  color: var(--fg-bright);
-  letter-spacing: 2px;
-  border-bottom: 1px solid var(--fg-dim);
-  padding-bottom: 6px;
-  margin-bottom: 12px;
-}
-
-.term__body {
-  margin-bottom: 14px;
-  white-space: pre-wrap;
-}
-
-.term__bodyline {
-  color: var(--fg);
-}
-
-.term__items {
-  list-style: none;
-  margin: 0 0 14px;
-  padding: 0;
-}
-
-.term__item {
-  padding: 3px 8px;
-  cursor: pointer;
-  border-left: 2px solid transparent;
   outline: none;
 }
 
-.term__item:hover,
-.term__item--active {
-  background: rgba(255, 255, 255, 0.05);
-  border-left-color: var(--accent);
+.term__line {
+  white-space: pre;
+  font-variant-ligatures: none;
 }
 
-.term__item--active::before {
-  content: "▸ ";
-  color: var(--accent);
-}
-
-.term__key {
-  color: var(--bg);
-  background: var(--accent);
-  padding: 0 6px;
-  border-radius: 2px;
-  font-weight: bold;
-}
-
-.term__sep {
+.term__line--prompt {
   color: var(--fg-dim);
-  margin: 0 6px 0 2px;
 }
 
-.term__label {
+.term__line--banner {
+  color: var(--fg-bright);
+  line-height: 1.05;
+}
+
+.term__line--dim,
+.term__line--hint {
+  color: var(--fg-dim);
+}
+
+.term__line--head {
+  color: var(--fg-bright);
+  letter-spacing: 1px;
+}
+
+.term__line--rule {
+  color: var(--fg-dim);
+}
+
+.term__line--text {
+  color: var(--fg);
+}
+
+/* Menu items — pure ASCII, selection shown with a `>` caret + subtle bar. */
+.term__line--item {
+  cursor: pointer;
+  color: var(--fg);
+  white-space: pre-wrap; /* long descriptions wrap instead of scrolling */
+}
+
+.term__line--item.is-selected {
+  background: rgba(255, 255, 255, 0.09);
   color: var(--fg-bright);
 }
 
-.term__hint {
-  color: var(--fg-dim);
-  font-size: 12px;
+.term__caret {
+  color: var(--fg-bright);
 }
 
-.term__help {
-  color: var(--fg-dim);
-  font-size: 12px;
-  margin-top: 4px;
+.term__itext {
+  color: inherit;
 }
 
-/* Transient log output */
+.term__ihint {
+  color: var(--fg-dim);
+}
+
+.term__line--item.is-selected .term__ihint {
+  color: var(--fg);
+}
+
+/* The trailing "ready" prompt + blinking block cursor. */
+.term__ready {
+  color: var(--fg-dim);
+}
+
+.term__cursor {
+  display: inline-block;
+  width: 0.6em;
+  height: 1.05em;
+  background: var(--fg);
+  vertical-align: text-bottom;
+  animation: til-blink 1.05s steps(1) infinite;
+  box-shadow: var(--glow);
+}
+
+@keyframes til-blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Async messages (rewards, backend pings, etc.) */
 .term__log {
-  border-top: 1px dashed var(--fg-dim);
-  margin-top: 8px;
-  padding-top: 8px;
-  min-height: 1.5em;
+  flex: 0 0 auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 6px;
+  padding-top: 6px;
+  max-height: 7.5em;
+  overflow-y: auto;
   font-size: 13px;
 }
 
 .term__logline {
-  color: var(--fg);
+  white-space: pre-wrap;
+  color: var(--fg-dim);
 }
 .term__logline.is-ok {
   color: var(--fg-bright);
@@ -187,31 +207,53 @@ body::after {
 
 /* Command line */
 .term__cmdline {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
-  border-top: 1px solid var(--fg-dim);
-  padding-top: 10px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .term__prompt {
-  color: var(--accent);
+  color: var(--fg-bright);
   white-space: nowrap;
 }
 
 .term__input {
   flex: 1;
+  min-width: 0;
   background: transparent;
   border: none;
   outline: none;
   color: var(--fg-bright);
   font-family: var(--font);
   font-size: 15px;
-  caret-color: var(--accent);
+  text-shadow: var(--glow);
+  caret-color: var(--fg);
 }
 
-.term__input::placeholder {
-  color: var(--fg-dim);
-  opacity: 0.7;
+/* A blinking block that sits at the end of the command line as the cursor. */
+.term__blink {
+  flex: 0 0 auto;
+  width: 0.6em;
+  height: 1.05em;
+  background: var(--fg);
+  animation: til-blink 1.05s steps(1) infinite;
+  box-shadow: var(--glow);
+}
+.term__cmdline:focus-within .term__blink {
+  display: none; /* hide the fake cursor while the native caret is active */
+}
+
+/* Thin phosphor scrollbars */
+.term__out::-webkit-scrollbar,
+.term__log::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.term__out::-webkit-scrollbar-thumb,
+.term__log::-webkit-scrollbar-thumb {
+  background: var(--fg-dim);
 }
