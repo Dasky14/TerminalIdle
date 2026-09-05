@@ -53,7 +53,22 @@ function run(shell, raw) {
   // Reserved command words take priority over name matching.
   switch (lc) {
     case 'help':
-      HELP.forEach((line) => shell.term(line));
+      if ((args[0] || '').toLowerCase() === 'items') shell.itemsHelp();
+      else HELP.forEach((line) => shell.term(line));
+      return;
+    case 'next':
+      shell.nextPage();
+      return;
+    case 'prev':
+    case 'previous':
+      shell.prevPage();
+      return;
+    case 'equip':
+      shell.equipByName(arg);
+      return;
+    case 'unequip':
+      if (!arg) shell.term('usage: unequip <slot>  (head, chest, hands, legs, feet, weapon1, weapon2)', 'is-warn');
+      else shell.unequipSlot(args[0]);
       return;
     case 'clear':
     case 'cls':
@@ -97,12 +112,31 @@ function run(shell, raw) {
       if (!arg) shell.mobileViewUsage();
       else shell.setMobileView(arg.toLowerCase());
       return;
+    case 'termlines':
+    case 'termheight':
+      if (!arg) shell.termLinesUsage();
+      else shell.setTermLines(arg);
+      return;
+    case 'loglines':
+    case 'logheight':
+      if (!arg) shell.logLinesUsage();
+      else shell.setLogLines(arg);
+      return;
     case 'ping':
       shell.pingBackend();
       return;
     case 'reset':
       shell.confirmReset();
       return;
+    case 'stat':
+    case 'stats': {
+      const sub = (args[0] || '').toLowerCase();
+      if (sub === 'help') shell.statsHelp();
+      else if (sub === 'add') shell.statsAdd(args[1], args[2]);
+      else if (sub === 'reset') shell.statsReset();
+      else shell.gotoStats(); // bare `stats` (or unknown sub) opens the screen
+      return;
+    }
     default:
       break;
   }
@@ -124,13 +158,23 @@ const HELP = [
   '  back / home          go up one menu / to the main menu',
   'commands:',
   '  help                 show this help',
+  '  help items           list all item modifiers and tiers',
   '  clear                clear this terminal',
+  '  stats                open the stats screen',
+  '  stats help           show stat growth per point',
+  '  stats add <s> <n>    allocate n points to stat s (e.g. stats add p.att 5)',
+  '  stats reset          refund all allocated points',
+  '  equip <name>         equip an item from your inventory',
+  '  unequip <slot>       unequip a slot (head..feet, weapon1, weapon2)',
+  '  next / prev          page through a long item list',
   '  play <id>            launch a minigame',
   '  ls                   list minigame ids',
   '  export | import      download / load a save file',
   '  theme [colour]        show themes, or set one (e.g. theme blue)',
   '  animation [on|off]    show / set the menu transition animation',
   '  mobileview [on|off]   show / set the phone-friendly layout',
+  '  termlines <n>         set terminal height (in lines)',
+  '  loglines <n>          set game log height (in lines)',
   '  ping                 check the configured backend',
   '  reset                wipe local save',
 ];

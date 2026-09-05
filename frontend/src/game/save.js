@@ -10,6 +10,9 @@ import {
   onChange,
   SAVE_VERSION,
 } from './state.js';
+import { emptyStats } from './stats.js';
+import { POINTS_PER_LEVEL } from './leveling.js';
+import { emptyEquipment } from './equipment.js';
 
 const STORAGE_KEY = 'til.save.v1';
 
@@ -17,7 +20,23 @@ const STORAGE_KEY = 'til.save.v1';
 // Each entry migrates a save FROM version N to N+1. Add new ones as the schema
 // evolves; older saves are upgraded step by step on import/load.
 const MIGRATIONS = {
-  // 0: (old) => ({ ...old, version: 1, /* ...transform... */ }),
+  // v1 -> v2: introduce character stats. Grant retroactive points for levels
+  // already earned so existing players aren't shortchanged.
+  1: (old) => ({
+    ...old,
+    version: 2,
+    stats: old.stats || emptyStats(),
+    statPoints:
+      old.statPoints != null
+        ? old.statPoints
+        : Math.max(0, ((old.profile && old.profile.level) || 1) - 1) * POINTS_PER_LEVEL,
+  }),
+  // v2 -> v3: introduce equipment slots.
+  2: (old) => ({
+    ...old,
+    version: 3,
+    equipment: old.equipment || emptyEquipment(),
+  }),
 };
 
 /** Run a (possibly old) save object up to the current SAVE_VERSION. */

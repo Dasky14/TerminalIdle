@@ -73,7 +73,7 @@
       <div class="count" id="count">0</div>
       <button id="click">CLICK  (+5 XP, +1 scrap)</button>
       <div class="row">
-        <button class="ghost" id="bonus">Bonus item (+1 Gear)</button>
+        <button class="ghost" id="bonus">Bonus item (random gear)</button>
         <button class="ghost" id="close">Close</button>
       </div>
       <div class="hint">
@@ -108,7 +108,8 @@
       });
 
       document.getElementById('bonus').addEventListener('click', function () {
-        TIL.sendReward({ items: [{ id: 'gear', name: 'Gear', qty: 1 }] });
+        // Ask the shell to roll a random equipment drop.
+        TIL.sendReward({ items: [{ roll: 'equipment' }] });
       });
 
       document.getElementById('close').addEventListener('click', function () {

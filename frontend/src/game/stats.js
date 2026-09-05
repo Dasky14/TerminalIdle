@@ -1,0 +1,68 @@
+// Character stat definitions and formulas.
+//
+// DESIGN: the save stores only the number of POINTS allocated to each stat.
+// The effective value of a stat is always derived from its points through a
+// single pure formula: value = base + perPoint * points. This keeps three
+// things easy:
+//   - Rebalancing: change `base` / `perPoint` here, nothing else.
+//   - Graphing: plot statValue(def, points) over a range of points (or over
+//     level, assuming a points-per-level allocation) — see below.
+//   - Reallocation / respec: just move the point counts around; values recompute.
+//
+// If a stat ever needs a non-linear curve, give its def a `curve(points)`
+// function and statValue() will use it instead of the linear default.
+
+/** @typedef {{id:string,name:string,abbr:string,aliases:string[],base:number,perPoint:number,fmt:'int'|'pct',curve?:(points:number)=>number}} StatDef */
+
+/** Ordered stat list. `aliases[0]` is the canonical command key. @type {StatDef[]} */
+export const STAT_DEFS = [
+  { id: 'hp', name: 'Health', abbr: 'HP', aliases: ['hp', 'health'], base: 100, perPoint: 10, fmt: 'int' },
+  { id: 'patt', name: 'Physical Attack', abbr: 'P.Att', aliases: ['p.att', 'patt', 'patk'], base: 10, perPoint: 2, fmt: 'int' },
+  { id: 'matt', name: 'Magical Attack', abbr: 'M.Att', aliases: ['m.att', 'matt', 'matk'], base: 10, perPoint: 2, fmt: 'int' },
+  { id: 'pdef', name: 'Physical Defense', abbr: 'P.Def', aliases: ['p.def', 'pdef'], base: 5, perPoint: 1, fmt: 'int' },
+  { id: 'mdef', name: 'Magical Defense', abbr: 'M.Def', aliases: ['m.def', 'mdef'], base: 5, perPoint: 1, fmt: 'int' },
+  { id: 'speed', name: 'Speed', abbr: 'Speed', aliases: ['speed', 'spd'], base: 10, perPoint: 1, fmt: 'int' },
+  { id: 'acc', name: 'Accuracy', abbr: 'Acc', aliases: ['accuracy', 'acc'], base: 90, perPoint: 0.5, fmt: 'pct' },
+  { id: 'critRate', name: 'Crit Rate', abbr: 'Crit%', aliases: ['crit.rate', 'critrate', 'cr'], base: 5, perPoint: 0.5, fmt: 'pct' },
+  { id: 'critDmg', name: 'Crit Damage', abbr: 'CritDmg', aliases: ['crit.dmg', 'critdmg', 'cd'], base: 150, perPoint: 5, fmt: 'pct' },
+  { id: 'luck', name: 'Luck', abbr: 'Luck', aliases: ['luck', 'lck'], base: 0, perPoint: 1, fmt: 'int' },
+];
+
+/** A fresh { statId: 0 } allocation map. */
+export function emptyStats() {
+  const s = {};
+  for (const d of STAT_DEFS) s[d.id] = 0;
+  return s;
+}
+
+/** Resolve user input (id, alias, abbr, or name) to a StatDef, or undefined. */
+export function findStat(input) {
+  const q = String(input || '').toLowerCase().trim();
+  if (!q) return undefined;
+  return STAT_DEFS.find(
+    (d) =>
+      d.id.toLowerCase() === q ||
+      d.abbr.toLowerCase() === q ||
+      d.name.toLowerCase() === q ||
+      d.aliases.includes(q),
+  );
+}
+
+/** Effective value of a stat given its allocated points. */
+export function statValue(def, points = 0) {
+  const p = Number(points) || 0;
+  return typeof def.curve === 'function' ? def.curve(p) : def.base + def.perPoint * p;
+}
+
+/** Compute every effective stat value from an allocation map (for battles etc). */
+export function computeStats(alloc = {}) {
+  const out = {};
+  for (const d of STAT_DEFS) out[d.id] = statValue(d, alloc[d.id] || 0);
+  return out;
+}
+
+/** Human-readable value, e.g. "112" or "90.5%". */
+export function formatStat(def, value) {
+  const v = Math.round(value * 10) / 10;
+  return def.fmt === 'pct' ? `${v}%` : String(v);
+}

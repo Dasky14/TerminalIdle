@@ -13,15 +13,33 @@
 //   - click the option in the menu.
 
 import { buildScreen } from './menus.js';
-import { onChange } from '../game/state.js';
+import { onChange, state } from '../game/state.js';
 import { getMinigame } from '../minigames/registry.js';
 import { exportSave, importSave, resetSave } from '../game/save.js';
 import { getConfig } from '../config.js';
+import { allocate, resetStats } from '../game/character.js';
+import { STAT_DEFS, statValue, formatStat } from '../game/stats.js';
+import { POINTS_PER_LEVEL } from '../game/leveling.js';
+import {
+  equipByUid,
+  equipInSlotByUid,
+  unequip,
+  findEquippableByName,
+  EQUIP_SLOTS,
+  SLOT_LABELS,
+} from '../game/equipment.js';
+import { modifierHelpLines } from '../game/items.js';
 
 const THEME_KEY = 'til.theme';
 const THEMES = ['green', 'amber', 'blue', 'white'];
 const ANIM_KEY = 'til.anim';
 const MOBILE_KEY = 'til.mobile';
+const TERMLINES_KEY = 'til.termlines';
+const LOGLINES_KEY = 'til.loglines';
+const DEFAULT_TERMLINES = 14;
+const DEFAULT_LOGLINES = 3;
+const MIN_LINES = 1;
+const MAX_LINES = 50;
 const ANIM_ON = ['on', 'enable', 'enabled', 'true', 'yes'];
 const ANIM_OFF = ['off', 'disable', 'disabled', 'false', 'no'];
 const PRINT_DELAY_MS = 12;
@@ -30,7 +48,7 @@ const MAX_TERM = 300;
 const MAX_GAMELOG = 80;
 
 // Top-level screens reachable by name from anywhere in the terminal.
-const GLOBAL_SCREENS = ['stats', 'inventory', 'resources', 'games', 'system'];
+const GLOBAL_SCREENS = ['stats', 'equipment', 'inventory', 'resources', 'games', 'system'];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -62,9 +80,23 @@ export class Shell {
     document.documentElement.dataset.mobile = this.mobileView ? 'on' : 'off';
     this.windowManager.setMobile(this.mobileView);
 
+    // Pane heights (game log / terminal) are measured in lines and adjustable.
+    this._loadLayout();
+
     // Live screens (stats/inventory/...) redraw instantly when state changes.
     onChange(() => {
-      if (['stats', 'inventory', 'resources', 'system'].includes(this.currentId)) {
+      if (
+        [
+          'stats',
+          'stats-allocate',
+          'equipment',
+          'equip-slot',
+          'inventory',
+          'inventory-cat',
+          'resources',
+          'system',
+        ].includes(this.currentId)
+      ) {
         this.render(false);
       }
     });
@@ -298,6 +330,147 @@ export class Shell {
     this.logGame(`>> started ${mg.title}`, 'is-ok');
   }
 
+  // --- Character stats -----------------------------------------------------
+  /** Jump to the stats screen (used by the bare `stats` command). */
+  gotoStats() {
+    this.stack = this.currentId === 'stats' ? this.stack : ['root', 'stats'];
+    this.render(true);
+  }
+
+  /** `stats add <stat> <points>` — allocate (or, with a negative, refund). */
+  statsAdd(statInput, amountInput) {
+    if (!statInput || amountInput == null) {
+      this.term('usage: stats add <stat> <points>   (e.g. stats add p.att 5)', 'is-warn');
+      return;
+    }
+    const res = allocate(statInput, amountInput);
+    if (!res.ok) {
+      this.term(res.error, 'is-error');
+      return;
+    }
+    const verb = res.added >= 0 ? `+${res.added} to` : `${res.added} from`;
+    this.term(
+      `${verb} ${res.def.abbr} -> ${formatStat(res.def, res.value)}  (points left: ${res.points})`,
+      'is-ok',
+    );
+  }
+
+  /** `stats reset` — refund every allocated point. */
+  statsReset() {
+    const { refunded, points } = resetStats();
+    this.term(`respec: refunded ${refunded} points (available: ${points})`, 'is-ok');
+  }
+
+  /** `stats help` — the per-point growth table + how to allocate. */
+  statsHelp() {
+    this.term(`character stats — you gain ${POINTS_PER_LEVEL} points per level.`, 'is-warn');
+    this.term('allocate:  stats add <stat> <points>     (e.g. stats add p.att 5)');
+    this.term('remove:    stats add <stat> -<points>    respec: stats reset');
+    this.term(`points available: ${state.statPoints}`);
+    this.term('growth per point:');
+    for (const d of STAT_DEFS) {
+      const key = d.aliases[0].padEnd(10);
+      const per = `+${d.perPoint}/pt`.padEnd(8);
+      this.term(`  ${key} ${per} base ${formatStat(d, d.base).padEnd(6)} ${d.name}`);
+    }
+  }
+
+  // --- Equipment -----------------------------------------------------------
+  /** Equip an inventory item by uid (used by the Equipment menu). */
+  equipItem(uid) {
+    const it = equipByUid(uid);
+    if (!it) {
+      this.term('item not found', 'is-error');
+      return;
+    }
+    this.term(`equipped ${it.name}`, 'is-ok');
+  }
+
+  /** Open the slot-detail screen for a chosen equipment slot. */
+  openSlot(slot) {
+    this.equipSlot = slot;
+    this.listPage = 0;
+    this.navigate('equip-slot');
+  }
+
+  /** Paginated list navigation (equip-slot / inventory-cat screens). */
+  nextPage() {
+    if (!['equip-slot', 'inventory-cat'].includes(this.currentId)) {
+      this.term('no list to page through here', 'is-warn');
+      return;
+    }
+    this.listPage = (this.listPage || 0) + 1; // buildScreen clamps to the last page
+    this.render(false);
+  }
+
+  prevPage() {
+    if (!['equip-slot', 'inventory-cat'].includes(this.currentId)) {
+      this.term('no list to page through here', 'is-warn');
+      return;
+    }
+    this.listPage = Math.max(0, (this.listPage || 0) - 1);
+    this.render(false);
+  }
+
+  /** Equip an item (by uid) into the currently selected slot. */
+  equipIntoSlot(uid) {
+    const it = equipInSlotByUid(uid, this.equipSlot);
+    if (!it) {
+      this.term('item not found', 'is-error');
+      return;
+    }
+    this.term(`equipped ${it.name} -> ${SLOT_LABELS[this.equipSlot]}`, 'is-ok');
+  }
+
+  /** Open an inventory category (filtered view). */
+  openInvCat(cat) {
+    this.invCat = cat;
+    this.listPage = 0;
+    this.navigate('inventory-cat');
+  }
+
+  /** `equip <name>` — equip the first inventory item matching the name. */
+  equipByName(query) {
+    if (!query) {
+      this.term('usage: equip <item name>', 'is-warn');
+      return;
+    }
+    const it = findEquippableByName(query);
+    if (!it) {
+      this.term(`no equippable item matching "${query}"`, 'is-error');
+      return;
+    }
+    this.equipItem(it.uid);
+  }
+
+  /** `unequip <slot>` (or a menu action) — free a slot back to the inventory. */
+  unequipSlot(slotInput) {
+    const aliases = { w1: 'weapon1', w2: 'weapon2', weapon: 'weapon1', main: 'weapon1', off: 'weapon2', offhand: 'weapon2' };
+    const slot = aliases[String(slotInput).toLowerCase()] || String(slotInput).toLowerCase();
+    if (!EQUIP_SLOTS.includes(slot)) {
+      this.term(`unknown slot. try: ${EQUIP_SLOTS.join(', ')}`, 'is-error');
+      return;
+    }
+    const it = unequip(slot);
+    this.term(it ? `unequipped ${it.name} (${SLOT_LABELS[slot]})` : `${SLOT_LABELS[slot]} is empty`, it ? 'is-ok' : 'is-warn');
+  }
+
+  /** `help items` — the modifier catalogue (stat, tiers, names). */
+  itemsHelp() {
+    this.term('items — rarity sets the number of name modifiers:', 'is-warn');
+    this.term('  common: none · rare: 1 (prefix or suffix) · epic: 2 (both) · legendary: unique');
+    this.term('modifier boost = stat perPoint x tier (shown in parentheses).');
+    modifierHelpLines().forEach((l) => this.term(l));
+  }
+
+  /** Prefill the command line with an allocate command for a stat. */
+  prefillAllocate(alias) {
+    const cmd = `stats add ${alias} `;
+    this.$input.value = cmd;
+    this.term(`ready: ${cmd}<points>   (e.g. ${cmd}5)`, 'is-echo');
+    if (!this.isTouch) this.$input.focus();
+  }
+
   doExport() {
     const name = exportSave();
     this.term(`exported save: ${name}`, 'is-ok');
@@ -426,6 +599,76 @@ export class Shell {
       /* ignore */
     }
     return this.isTouch; // default: on for touch devices
+  }
+
+  // --- Pane heights (in lines) --------------------------------------------
+  // NOTE: `termLines` is the transcript array; the line-count settings live on
+  // `termRows` / `logRows` to avoid clobbering it.
+  _loadLayout() {
+    this.termRows = this._loadRows(TERMLINES_KEY, DEFAULT_TERMLINES);
+    this.logRows = this._loadRows(LOGLINES_KEY, DEFAULT_LOGLINES);
+    this._applyLayout();
+  }
+
+  _loadRows(key, def) {
+    try {
+      const v = parseInt(localStorage.getItem(key), 10);
+      if (Number.isFinite(v)) return Math.min(MAX_LINES, Math.max(MIN_LINES, v));
+    } catch {
+      /* ignore */
+    }
+    return def;
+  }
+
+  _applyLayout() {
+    const s = document.documentElement.style;
+    s.setProperty('--term-lines', String(this.termRows));
+    s.setProperty('--log-lines', String(this.logRows));
+  }
+
+  _parseRows(input) {
+    const n = Math.trunc(Number(input));
+    if (!Number.isFinite(n) || n < MIN_LINES || n > MAX_LINES) {
+      this.term(`enter a line count between ${MIN_LINES} and ${MAX_LINES}`, 'is-error');
+      return null;
+    }
+    return n;
+  }
+
+  setTermLines(input) {
+    const n = this._parseRows(input);
+    if (n == null) return;
+    this.termRows = n;
+    try {
+      localStorage.setItem(TERMLINES_KEY, String(n));
+    } catch {
+      /* ignore */
+    }
+    this._applyLayout();
+    this.term(`terminal height: ${n} lines`, 'is-ok');
+  }
+
+  setLogLines(input) {
+    const n = this._parseRows(input);
+    if (n == null) return;
+    this.logRows = n;
+    try {
+      localStorage.setItem(LOGLINES_KEY, String(n));
+    } catch {
+      /* ignore */
+    }
+    this._applyLayout();
+    this.term(`game log height: ${n} lines`, 'is-ok');
+  }
+
+  termLinesUsage() {
+    this.term('usage: termlines <n>   (lines shown in the terminal)', 'is-warn');
+    this.term(`current: ${this.termRows}  (default ${DEFAULT_TERMLINES})`);
+  }
+
+  logLinesUsage() {
+    this.term('usage: loglines <n>   (lines shown in the game log)', 'is-warn');
+    this.term(`current: ${this.logRows}  (default ${DEFAULT_LOGLINES})`);
   }
 
   async pingBackend() {

@@ -4,7 +4,9 @@
 // (leveling.js, inventory.js, resources.js, rewards.js) and then call
 // `emitChange()` so the UI can re-render. Read freely via `state`.
 
-export const SAVE_VERSION = 1;
+import { emptyStats } from './stats.js';
+
+export const SAVE_VERSION = 3;
 
 /** Build a brand-new save/state object. */
 export function createInitialState() {
@@ -14,6 +16,20 @@ export function createInitialState() {
     profile: {
       level: 1,
       xp: 0,
+    },
+    // Allocated stat points per stat id (effective values derived in stats.js).
+    stats: emptyStats(),
+    // Unspent stat points (5 granted per level up).
+    statPoints: 0,
+    // Equipped items per slot (see game/equipment.js). null = empty.
+    equipment: {
+      head: null,
+      chest: null,
+      hands: null,
+      legs: null,
+      feet: null,
+      weapon1: null,
+      weapon2: null,
     },
     // Inventory items: { id, name, qty, meta? }
     inventory: [],

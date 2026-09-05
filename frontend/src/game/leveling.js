@@ -6,10 +6,13 @@
 
 import { state, emitChange } from './state.js';
 
+/** Stat points granted on each level up. */
+export const POINTS_PER_LEVEL = 5;
+
 /** Total XP required to advance FROM `level` to `level + 1`. */
 export function xpForLevel(level) {
-  // e.g. L1->2 = 100, L2->3 = 175, L3->4 = 275, ... (grows ~1.5x-ish, floored)
-  return Math.floor(100 * Math.pow(level, 1.5));
+  // 100 * currentLevel^1.1  (L1->2 = 100, L2->3 ~= 214, L10->11 ~= 1258, ...)
+  return Math.floor(100 * Math.pow(level, 1.1));
 }
 
 /** XP the player currently has toward their next level. */
@@ -25,6 +28,7 @@ function applyLevelUps() {
     state.profile.level += 1;
     gained += 1;
   }
+  if (gained) state.statPoints = (state.statPoints || 0) + gained * POINTS_PER_LEVEL;
   return gained;
 }
 

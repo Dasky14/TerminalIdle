@@ -6,6 +6,7 @@ import './styles/windows.css';
 
 import { loadConfig } from './config.js';
 import { loadFromStorage, enableAutosave } from './game/save.js';
+import { POINTS_PER_LEVEL } from './game/leveling.js';
 import { WindowManager } from './windows/windowManager.js';
 import { Shell } from './shell/shell.js';
 import { attachCommandLine } from './shell/commandLine.js';
@@ -25,9 +26,13 @@ async function main() {
     onReward: (summary) => {
       const parts = [];
       if (summary.xp) parts.push(`+${summary.xp} XP`);
-      if (summary.levelsGained) parts.push(`LEVEL UP x${summary.levelsGained}!`);
+      if (summary.levelsGained) {
+        parts.push(`LEVEL UP x${summary.levelsGained}! (+${summary.levelsGained * POINTS_PER_LEVEL} pts)`);
+      }
       for (const [k, v] of Object.entries(summary.resources || {})) parts.push(`+${v} ${k}`);
-      for (const it of summary.items || []) parts.push(`+${it.qty} ${it.id}`);
+      for (const it of summary.items || []) {
+        parts.push(it.name ? `got ${it.rarity ? `[${it.rarity}] ` : ''}${it.name}` : `+${it.qty} ${it.id}`);
+      }
       if (parts.length && shell) {
         // Minigame rewards go to the running GAME LOG (middle pane).
         shell.logGame(`[${summary.source}] ${parts.join('  ')}`, 'is-ok');

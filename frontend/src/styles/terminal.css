@@ -10,6 +10,9 @@
   --font: "Consolas", "SFMono-Regular", "Liberation Mono", "Menlo", "DejaVu Sans Mono",
     monospace;
   --glow: 0 0 5px rgba(51, 255, 102, 0.35);
+  --lh: 1.35; /* line-height multiplier, used to size panes by line count */
+  --term-lines: 14; /* terminal height in lines (set via `termlines`) */
+  --log-lines: 3; /* game log height in lines (set via `loglines`) */
 }
 
 :root[data-theme="amber"] {
@@ -101,8 +104,9 @@ body::after {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) 20vh 34vh;
-  grid-template-rows: minmax(0, 1fr) 20dvh 34dvh;
+  /* Menu takes the remaining space; the game log and terminal are sized by
+     their line count (below), so they stay fixed and the menu gets the rest. */
+  grid-template-rows: minmax(0, 1fr) auto auto;
   gap: 6px;
 }
 
@@ -201,8 +205,8 @@ body::after {
 
 /* --- Game log (middle) --- */
 .gamelog {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
+  height: calc(var(--log-lines) * var(--lh) * 1em);
   overflow-y: auto;
   font-size: 13px;
 }
@@ -219,8 +223,8 @@ body::after {
 
 /* --- Terminal transcript (bottom) --- */
 .termout {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
+  height: calc(var(--term-lines) * var(--lh) * 1em);
   overflow-y: auto;
   font-size: 14px;
 }

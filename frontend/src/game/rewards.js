@@ -10,6 +10,7 @@
 import { addXp } from './leveling.js';
 import { addResources } from './resources.js';
 import { addItem } from './inventory.js';
+import { generateItem } from './items.js';
 
 /**
  * Apply a reward and return a summary of what happened (useful for a toast /
@@ -33,9 +34,15 @@ export function applyReward(reward = {}, ctx = {}) {
 
   if (Array.isArray(reward.items)) {
     for (const item of reward.items) {
-      if (item && item.id) {
+      if (!item) continue;
+      if (item.roll === 'equipment') {
+        // Roll a random equipment drop (rarity/mods rolled in items.js).
+        const gen = generateItem();
+        addItem({ id: gen.uid, name: gen.name, qty: 1, meta: gen });
+        summary.items.push({ id: gen.uid, name: gen.name, rarity: gen.rarity, qty: 1 });
+      } else if (item.id) {
         addItem(item);
-        summary.items.push({ id: item.id, qty: item.qty ?? 1 });
+        summary.items.push({ id: item.id, name: item.name, qty: item.qty ?? 1 });
       }
     }
   }
