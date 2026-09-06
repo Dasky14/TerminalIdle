@@ -16,16 +16,68 @@
 
 /** Ordered stat list. `aliases[0]` is the canonical command key. @type {StatDef[]} */
 export const STAT_DEFS = [
-  { id: 'hp', name: 'Health', abbr: 'HP', aliases: ['hp', 'health'], base: 100, perPoint: 10, fmt: 'int' },
-  { id: 'patt', name: 'Physical Attack', abbr: 'P.Att', aliases: ['p.att', 'patt', 'patk'], base: 10, perPoint: 2, fmt: 'int' },
-  { id: 'matt', name: 'Magical Attack', abbr: 'M.Att', aliases: ['m.att', 'matt', 'matk'], base: 10, perPoint: 2, fmt: 'int' },
-  { id: 'pdef', name: 'Physical Defense', abbr: 'P.Def', aliases: ['p.def', 'pdef'], base: 5, perPoint: 1, fmt: 'int' },
-  { id: 'mdef', name: 'Magical Defense', abbr: 'M.Def', aliases: ['m.def', 'mdef'], base: 5, perPoint: 1, fmt: 'int' },
-  { id: 'speed', name: 'Speed', abbr: 'Speed', aliases: ['speed', 'spd'], base: 10, perPoint: 1, fmt: 'int' },
-  { id: 'acc', name: 'Accuracy', abbr: 'Acc', aliases: ['accuracy', 'acc'], base: 90, perPoint: 0.5, fmt: 'pct' },
-  { id: 'critRate', name: 'Crit Rate', abbr: 'Crit%', aliases: ['crit.rate', 'critrate', 'cr'], base: 5, perPoint: 0.5, fmt: 'pct' },
-  { id: 'critDmg', name: 'Crit Damage', abbr: 'CritDmg', aliases: ['crit.dmg', 'critdmg', 'cd'], base: 150, perPoint: 5, fmt: 'pct' },
-  { id: 'luck', name: 'Luck', abbr: 'Luck', aliases: ['luck', 'lck'], base: 0, perPoint: 1, fmt: 'int' },
+  {
+    id: 'hp', name: 'Health', abbr: 'HP', aliases: ['hp', 'health'],
+    base: 100, perPoint: 10, fmt: 'int',
+    help: ['Your health pool. When it hits 0 you are defeated.',
+      'In the dungeon, HP carries between rooms and only refills at the start of a floor (or on death).'],
+  },
+  {
+    id: 'patt', name: 'Physical Attack', abbr: 'P.Att', aliases: ['p.att', 'patt', 'patk'],
+    base: 10, perPoint: 2, fmt: 'int',
+    help: ['Physical attack power. An attack uses whichever is higher, P.Att or M.Att, and hits the matching defense.'],
+  },
+  {
+    id: 'matt', name: 'Magical Attack', abbr: 'M.Att', aliases: ['m.att', 'matt', 'matk'],
+    base: 10, perPoint: 2, fmt: 'int',
+    help: ['Magical attack power. Used instead of P.Att when it is higher, and hits M.Def.'],
+  },
+  {
+    id: 'pdef', name: 'Physical Defense', abbr: 'P.Def', aliases: ['p.def', 'pdef'],
+    base: 5, perPoint: 1, fmt: 'int',
+    help: ['Reduces incoming physical damage.',
+      'damage taken = raw x (1 - P.Def / (P.Def + 50))'],
+  },
+  {
+    id: 'mdef', name: 'Magical Defense', abbr: 'M.Def', aliases: ['m.def', 'mdef'],
+    base: 5, perPoint: 1, fmt: 'int',
+    help: ['Reduces incoming magical damage.',
+      'damage taken = raw x (1 - M.Def / (M.Def + 50))'],
+  },
+  {
+    id: 'speed', name: 'Speed', abbr: 'Speed', aliases: ['speed', 'spd'],
+    base: 10, perPoint: 1, fmt: 'int',
+    help: ['Determines who acts first in combat — the higher Speed strikes first.'],
+  },
+  {
+    id: 'acc', name: 'Accuracy', abbr: 'Acc', aliases: ['accuracy', 'acc'],
+    base: 90, perPoint: 1, fmt: 'int',
+    help: ['Your chance to land a hit, measured against the target\'s Dodge.',
+      'hit chance = min(100%, Accuracy / (2 x target Dodge))   (never below 10%)',
+      'You reach 100% hit at twice the target\'s Dodge.'],
+  },
+  {
+    id: 'dodge', name: 'Dodge', abbr: 'Dodge', aliases: ['dodge', 'ddg', 'eva', 'evasion'],
+    base: 20, perPoint: 0.5, fmt: 'int',
+    help: ['Your evasion. An attacker hits you with chance min(100%, their Accuracy / (2 x your Dodge)), never below 10%.',
+      'Dodge grows slower than Accuracy, so it is a long-term investment rather than a quick fix — but it can never be fully ignored.'],
+  },
+  {
+    id: 'critRate', name: 'Crit Rate', abbr: 'Crit%', aliases: ['crit.rate', 'critrate', 'cr'],
+    base: 5, perPoint: 0.5, fmt: 'pct',
+    help: ['Chance for an attack to critically hit.'],
+  },
+  {
+    id: 'critDmg', name: 'Crit Damage', abbr: 'CritDmg', aliases: ['crit.dmg', 'critdmg', 'cd'],
+    base: 150, perPoint: 5, fmt: 'pct',
+    help: ['Damage multiplier on a critical hit (150% = 1.5x damage).'],
+  },
+  {
+    id: 'luck', name: 'Luck', abbr: 'Luck', aliases: ['luck', 'lck'],
+    base: 0, perPoint: 1, fmt: 'int',
+    help: ['Improves the rarity of the loot you find.',
+      'It has no direct combat effect — its value is not added to any combat number; games use it for drop quality.'],
+  },
 ];
 
 /** A fresh { statId: 0 } allocation map. */

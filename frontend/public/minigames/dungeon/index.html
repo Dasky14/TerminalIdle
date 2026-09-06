@@ -108,19 +108,20 @@
       var TURN_MS = 1000;
       var XP_PER_ENEMY = 10; // * floor
       var XP_PER_BOSS = 60; // * floor
+      var MIN_HIT = 0.1; // dodge can never drop hit chance below 10%
 
       // ---- Enemy archetypes (base level-1 stats) ---------------------------
       var ENEMIES = [
-        { name: 'Slime',    hp: 40, patt: 6,  matt: 0,  pdef: 2, mdef: 2, speed: 5,  acc: 90, critRate: 2, critDmg: 150, luck: 1 },
-        { name: 'Goblin',   hp: 50, patt: 9,  matt: 0,  pdef: 3, mdef: 2, speed: 9,  acc: 90, critRate: 5, critDmg: 150, luck: 2 },
-        { name: 'Bat',      hp: 30, patt: 7,  matt: 0,  pdef: 1, mdef: 1, speed: 14, acc: 90, critRate: 8, critDmg: 150, luck: 3 },
-        { name: 'Skeleton', hp: 60, patt: 11, matt: 0,  pdef: 5, mdef: 1, speed: 7,  acc: 90, critRate: 5, critDmg: 150, luck: 1 },
-        { name: 'Acolyte',  hp: 45, patt: 0,  matt: 12, pdef: 2, mdef: 5, speed: 8,  acc: 90, critRate: 5, critDmg: 150, luck: 2 },
+        { name: 'Slime',    hp: 40, patt: 6,  matt: 0,  pdef: 2, mdef: 2, speed: 5,  acc: 90, dodge: 10, critRate: 2, critDmg: 150, luck: 1 },
+        { name: 'Goblin',   hp: 50, patt: 9,  matt: 0,  pdef: 3, mdef: 2, speed: 9,  acc: 90, dodge: 18, critRate: 5, critDmg: 150, luck: 2 },
+        { name: 'Bat',      hp: 30, patt: 7,  matt: 0,  pdef: 1, mdef: 1, speed: 14, acc: 90, dodge: 30, critRate: 8, critDmg: 150, luck: 3 },
+        { name: 'Skeleton', hp: 60, patt: 11, matt: 0,  pdef: 5, mdef: 1, speed: 7,  acc: 90, dodge: 12, critRate: 5, critDmg: 150, luck: 1 },
+        { name: 'Acolyte',  hp: 45, patt: 0,  matt: 12, pdef: 2, mdef: 5, speed: 8,  acc: 90, dodge: 15, critRate: 5, critDmg: 150, luck: 2 },
       ];
       var BOSSES = [
-        { name: 'Ogre',       hp: 120, patt: 16, matt: 0,  pdef: 6, mdef: 4, speed: 6,  acc: 90, critRate: 5,  critDmg: 160, luck: 3 },
-        { name: 'Dark Mage',  hp: 100, patt: 0,  matt: 20, pdef: 4, mdef: 8, speed: 9,  acc: 90, critRate: 8,  critDmg: 160, luck: 4 },
-        { name: 'Dragonling', hp: 150, patt: 18, matt: 10, pdef: 8, mdef: 6, speed: 10, acc: 90, critRate: 10, critDmg: 175, luck: 5 },
+        { name: 'Ogre',       hp: 120, patt: 16, matt: 0,  pdef: 6, mdef: 4, speed: 6,  acc: 90, dodge: 12, critRate: 5,  critDmg: 160, luck: 3 },
+        { name: 'Dark Mage',  hp: 100, patt: 0,  matt: 20, pdef: 4, mdef: 8, speed: 9,  acc: 90, dodge: 18, critRate: 8,  critDmg: 160, luck: 4 },
+        { name: 'Dragonling', hp: 150, patt: 18, matt: 10, pdef: 8, mdef: 6, speed: 10, acc: 90, dodge: 22, critRate: 10, critDmg: 175, luck: 5 },
       ];
 
       // ---- State ------------------------------------------------------------
@@ -151,8 +152,8 @@
       function makeEnemy(archetype, f) {
         var m = floorMultiplier(f);
         var e = { name: archetype.name, level: f };
-        ['hp', 'patt', 'matt', 'pdef', 'mdef', 'speed', 'acc', 'critRate', 'critDmg', 'luck'].forEach(
-          function (k) { e[k] = Math.round(archetype[k] * m); }
+        ['hp', 'patt', 'matt', 'pdef', 'mdef', 'speed', 'acc', 'dodge', 'critRate', 'critDmg', 'luck'].forEach(
+          function (k) { e[k] = Math.round((archetype[k] || 0) * m); }
         );
         e.maxhp = e.hp;
         return e;
@@ -229,11 +230,31 @@
         render();
       }
 
+      // Hit chance = min(100%, Accuracy / (2 * Dodge)), floored at MIN_HIT.
+      function hitChance(attacker, defender) {
+        var d = defender.dodge || 0;
+        if (d <= 0) return 1;
+        return Math.max(MIN_HIT, Math.min(1, attacker.acc / (2 * d)));
+      }
+
       function tick() {
         if (paused || !combat) return;
         var playerTurn = combat.activeIsPlayer;
         var attacker = playerTurn ? player : combat.enemy;
         var defender = playerTurn ? combat.enemy : player;
+
+        // Accuracy vs Dodge — a miss ends the turn with no damage (and no
+        // Bulwark spent, since nothing landed).
+        if (Math.random() >= hitChance(attacker, defender)) {
+          log(
+            playerTurn ? 'You miss the ' + combat.enemy.name + '.' : combat.enemy.name + ' misses you.',
+            'is-info'
+          );
+          combat.activeIsPlayer = !combat.activeIsPlayer;
+          render();
+          return;
+        }
+
         var defPen = playerTurn ? effectMap.ignoreDefense || 0 : 0; // Radiant Edge
         var r = computeAttack(attacker, defender, defPen);
 
@@ -352,7 +373,7 @@
           maxhp: Math.max(1, Math.round(g('hp', 100))),
           patt: g('patt', 10), matt: g('matt', 10),
           pdef: g('pdef', 5), mdef: g('mdef', 5),
-          speed: g('speed', 10), acc: g('acc', 90),
+          speed: g('speed', 10), acc: g('acc', 90), dodge: g('dodge', 20),
           critRate: g('critRate', 5), critDmg: g('critDmg', 150), luck: g('luck', 0),
         };
       }

@@ -131,7 +131,7 @@ function run(shell, raw) {
     case 'stat':
     case 'stats': {
       const sub = (args[0] || '').toLowerCase();
-      if (sub === 'help') shell.statsHelp();
+      if (sub === 'help') shell.statsHelp(args[1]);
       else if (sub === 'add') shell.statsAdd(args[1], args[2]);
       else if (sub === 'reset') shell.statsReset();
       else shell.gotoStats(); // bare `stats` (or unknown sub) opens the screen

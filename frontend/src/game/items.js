@@ -15,13 +15,24 @@ import { STAT_DEFS, formatStat } from './stats.js';
 
 const PER_POINT = Object.fromEntries(STAT_DEFS.map((d) => [d.id, d.perPoint]));
 
-/** Rarity metadata (drop weights + how many modifiers). */
+// Rarity metadata. `weight` is the base drop chance at luck 0 (they sum to 1).
+// `mods` is how many name modifiers the rarity rolls.
 export const RARITIES = {
-  common: { label: 'Common', mods: 0, weight: 0.7 },
-  rare: { label: 'Rare', mods: 1, weight: 0.23 },
+  common: { label: 'Common', mods: 0, weight: 0.749 },
+  rare: { label: 'Rare', mods: 1, weight: 0.2 },
   epic: { label: 'Epic', mods: 2, weight: 0.05 },
-  legendary: { label: 'Legendary', mods: 0, weight: 0.02 },
+  legendary: { label: 'Legendary', mods: 0, weight: 0.001 },
 };
+
+// Rarity order, worst -> best (used to lay out the [0,1) roll space).
+export const RARITY_TIERS = ['common', 'rare', 'epic', 'legendary'];
+
+// Luck warps a single [0,1) roll toward higher rarity:
+//   quality = roll ^ (1 / (1 + luck * LUCK_K))
+// which raises the chance of landing in the high-rarity bands. LUCK_K is tuned
+// so ~luck 1000 gives ~1% legendary (from a 0.1% base). Bump it to make luck
+// pay off faster.
+export const LUCK_K = 0.009;
 
 // Base items. `slot` is the equip slot; weapons use slot 'weapon' with `hands`:
 // 1 (one-handed), 2 (two-handed), or 'off' (off-hand, e.g. a shield).
@@ -48,6 +59,7 @@ export const PREFIXES = {
   mdef: ['Warded', 'Runed', 'Hallowed'],
   speed: ['Swift', 'Fleet', 'Blurring'],
   acc: ['Precise', 'Keeneye', 'Unerring'],
+  dodge: ['Nimble', 'Evasive', 'Ghostly'],
   critRate: ['Deadly', 'Lethal', 'Murderous'],
   critDmg: ['Vicious', 'Savage', 'Cataclysmic'],
   luck: ['Lucky', 'Fortunate', 'Blessed'],
@@ -60,6 +72,7 @@ export const SUFFIXES = {
   mdef: ['of Warding', 'of Spellguard', 'of the Sanctum'],
   speed: ['of Haste', 'of Alacrity', 'of the Gale'],
   acc: ['of Aim', 'of Precision', 'of the Hawk'],
+  dodge: ['of Evasion', 'of the Fox', 'of Shadows'],
   critRate: ['of Striking', 'of the Assassin', 'of Slaughter'],
   critDmg: ['of Ruin', 'of Carnage', 'of Annihilation'],
   luck: ['of Luck', 'of Fortune', 'of Destiny'],
@@ -108,12 +121,34 @@ export function modifierValue(statId, tier) {
   return (PER_POINT[statId] || 0) * tier;
 }
 
-function rollRarity() {
-  const r = Math.random();
-  if (r < RARITIES.legendary.weight) return 'legendary';
-  if (r < RARITIES.legendary.weight + RARITIES.epic.weight) return 'epic';
-  if (r < RARITIES.legendary.weight + RARITIES.epic.weight + RARITIES.rare.weight) return 'rare';
-  return 'common';
+/**
+ * Roll a rarity, warping a single [0,1) roll toward higher rarity by luck.
+ * At luck 0 it reproduces the base weights exactly.
+ */
+export function rollRarity(luck = 0) {
+  const quality = Math.pow(Math.random(), 1 / (1 + Math.max(0, luck) * LUCK_K));
+  let cum = 0;
+  for (const tier of RARITY_TIERS) {
+    cum += RARITIES[tier].weight;
+    if (quality < cum) return tier;
+  }
+  return 'legendary';
+}
+
+/** P(rarity) for a given luck — handy for tuning/telemetry. */
+export function rarityChances(luck = 0) {
+  const exp = 1 + Math.max(0, luck) * LUCK_K;
+  // P(quality >= t) = 1 - t^exp, evaluated at each cumulative boundary.
+  let lowerCum = 0;
+  const out = {};
+  for (const tier of RARITY_TIERS) {
+    const upperCum = lowerCum + RARITIES[tier].weight;
+    const pAtLeastLower = 1 - Math.pow(lowerCum, exp); // quality >= lowerCum
+    const pAtLeastUpper = upperCum >= 1 ? 0 : 1 - Math.pow(upperCum, exp);
+    out[tier] = pAtLeastLower - pAtLeastUpper;
+    lowerCum = upperCum;
+  }
+  return out;
 }
 
 function makeMod(kind) {
@@ -157,11 +192,11 @@ function instantiateLegendary(def) {
 }
 
 /**
- * Generate an item. Pass { rarity } to force one, otherwise it's rolled.
+ * Generate an item. Pass { rarity } to force one, or { luck } to bias the roll.
  * @returns an item instance.
  */
 export function generateItem(opts = {}) {
-  const rarity = opts.rarity || rollRarity();
+  const rarity = opts.rarity || rollRarity(opts.luck || 0);
   if (rarity === 'legendary') return instantiateLegendary(opts.legendary);
 
   const base = randOf(BASE_ITEMS);

@@ -18,7 +18,7 @@ import { getMinigame } from '../minigames/registry.js';
 import { exportSave, importSave, resetSave } from '../game/save.js';
 import { getConfig } from '../config.js';
 import { allocate, resetStats } from '../game/character.js';
-import { STAT_DEFS, statValue, formatStat } from '../game/stats.js';
+import { STAT_DEFS, statValue, formatStat, findStat } from '../game/stats.js';
 import { POINTS_PER_LEVEL } from '../game/leveling.js';
 import {
   equipByUid,
@@ -28,7 +28,8 @@ import {
   EQUIP_SLOTS,
   SLOT_LABELS,
 } from '../game/equipment.js';
-import { modifierHelpLines } from '../game/items.js';
+import { modifierHelpLines, rarityChances } from '../game/items.js';
+import { effectiveStats } from '../game/character.js';
 
 const THEME_KEY = 'til.theme';
 const THEMES = ['green', 'amber', 'blue', 'white'];
@@ -361,8 +362,29 @@ export class Shell {
     this.term(`respec: refunded ${refunded} points (available: ${points})`, 'is-ok');
   }
 
-  /** `stats help` — the per-point growth table + how to allocate. */
-  statsHelp() {
+  /** `stats help [stat]` — the growth table, or one stat's description. */
+  statsHelp(statArg) {
+    if (statArg) {
+      const d = findStat(statArg);
+      if (!d) {
+        this.term(`unknown stat: ${statArg}  (try 'stats help')`, 'is-error');
+        return;
+      }
+      this.term(`${d.name}  (${d.aliases[0]})`, 'is-warn');
+      this.term(`base ${formatStat(d, d.base)}   ·   +${d.perPoint} per point`);
+      const lines = Array.isArray(d.help) ? d.help : d.help ? [d.help] : [];
+      for (const l of lines) this.term('  ' + l);
+      if (d.id === 'luck') {
+        const luck = effectiveStats().luck || 0;
+        const c = rarityChances(luck);
+        const p = (x) => (x * 100).toFixed(2) + '%';
+        this.term(
+          `  at your Luck (${luck}): legendary ${p(c.legendary)}, epic ${p(c.epic)}, ` +
+            `rare ${p(c.rare)}, common ${p(c.common)}`,
+        );
+      }
+      return;
+    }
     this.term(`character stats — you gain ${POINTS_PER_LEVEL} points per level.`, 'is-warn');
     this.term('allocate:  stats add <stat> <points>     (e.g. stats add p.att 5)');
     this.term('remove:    stats add <stat> -<points>    respec: stats reset');
@@ -373,6 +395,7 @@ export class Shell {
       const per = `+${d.perPoint}/pt`.padEnd(8);
       this.term(`  ${key} ${per} base ${formatStat(d, d.base).padEnd(6)} ${d.name}`);
     }
+    this.term("details:  stats help <stat>   (e.g. stats help dodge)");
   }
 
   // --- Equipment -----------------------------------------------------------
