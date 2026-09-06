@@ -87,13 +87,39 @@ Envelope (both directions): `{ __til: true, dir: 'in'|'out', type, payload }`.
 | game → shell     | `progress`     | Persist a minigame-scoped save slice.             |
 | game → shell     | `requestClose` | Ask the shell to close the window.                |
 | game → shell     | `error`        | Log to shell console.                             |
-| shell → game     | `init`         | `{minigameId, profile:{level}, save}` context.    |
+| shell → game     | `init`         | `{minigameId, profile:{level}, stats, effects, save}`. |
+| shell → game     | `stats`        | `{stats, effects}` — pushed live when they change. |
 | shell → game     | `pause`/`resume`/`shutdown` | Lifecycle signals.                   |
+
+`stats` is the player's effective combat stats (allocation + equipment) and
+`effects` the active item effects; both are sent at `init` and again (deduped)
+whenever they change, so a running game can react (the dungeon applies them at
+the end of the current fight).
 
 For **Unity WebGL**, `shell → game` is delivered via
 `unityInstance.SendMessage("TILBridge", "OnShellMessage", json)` instead of
 `postMessage`; `game → shell` still uses `postMessage` (from `TILBridge.jslib`).
 See [MINIGAME_GUIDE.md](MINIGAME_GUIDE.md).
+
+## Maintaining commands, stats & help
+
+To keep help text from drifting out of sync with behaviour, three things are
+single-sourced:
+
+- **Terminal commands** live in one `COMMANDS` table in
+  [`shell/commandLine.js`](../frontend/src/shell/commandLine.js). It drives both
+  dispatch and the `help` listing — add or edit a command in that one table.
+- **Stats** (name, growth, and their `help` descriptions) live in
+  [`game/stats.js`](../frontend/src/game/stats.js) `STAT_DEFS`; `stats help
+  <stat>` reads them. Item name modifiers are generated from the same data via
+  `modifierHelpLines()` in [`game/items.js`](../frontend/src/game/items.js).
+- **Equations** are documented in `stats.js` help but *implemented* elsewhere —
+  and the dungeon is a sandboxed iframe that can't import shared code, so the
+  numbers are duplicated on purpose. Every such site carries a `HELP COUPLING`
+  comment naming its counterpart. Current pairs: defense mitigation & crit
+  (`dungeon` `computeAttack` ↔ P.Def/M.Def/CritDmg help), hit chance (`dungeon`
+  `hitChance` ↔ Acc/Dodge help), and luck→rarity (`items.js` `rollRarity` ↔ Luck
+  help). Change one side, change the other.
 
 ## Why these choices
 

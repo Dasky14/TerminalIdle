@@ -2,14 +2,124 @@
 //
 // Everything you type is echoed into the terminal transcript, then resolved:
 //   - a bare NUMBER            → activates that menu option
-//   - a reserved command word  → help / clear / play / export / ... (below)
+//   - a reserved command word  → dispatched via the COMMANDS table below
 //   - anything else            → matched against the current menu options by
 //                                name (partial ok), or a top-level screen name
 //
 // So both "2" and "inv"/"inventory" open the Inventory, and plain menu use never
 // needs the mouse.
+//
+// MAINTENANCE: commands are defined ONCE in the COMMANDS table — it drives both
+// dispatch and the `help` listing, so there is no separate help list to keep in
+// sync. To add or change a command, edit only that table.
 
 import { MINIGAMES } from '../minigames/registry.js';
+
+// Lines shown at the top of `help` describing menu navigation (not commands).
+const NAV_HELP = [
+  'navigation:',
+  '  <number>             select that menu option',
+  '  <name>               select by name, partial ok (e.g. "inv")',
+];
+
+/**
+ * Every typed command. Each entry:
+ *   names  – the word(s) that invoke it (first is canonical)
+ *   usage  – help line(s); omit on alias-only entries so they aren't re-listed
+ *   run    – (shell, args[], arg) => void   (arg = args joined by spaces)
+ */
+const COMMANDS = [
+  {
+    names: ['help'],
+    usage: ['help                 show this help', 'help items           list all item modifiers and tiers'],
+    run: (s, args) => ((args[0] || '').toLowerCase() === 'items' ? s.itemsHelp() : printHelp(s)),
+  },
+  {
+    names: ['stats', 'stat'],
+    usage: [
+      'stats                open the stats screen',
+      'stats help [stat]    stat growth, or one stat in detail',
+      'stats add <s> <n>    allocate n points (e.g. stats add p.att 5)',
+      'stats reset          refund all allocated points',
+    ],
+    run: (s, args) => {
+      const sub = (args[0] || '').toLowerCase();
+      if (sub === 'help') s.statsHelp(args[1]);
+      else if (sub === 'add') s.statsAdd(args[1], args[2]);
+      else if (sub === 'reset') s.statsReset();
+      else s.gotoStats(); // bare `stats` (or unknown sub) opens the screen
+    },
+  },
+  {
+    names: ['equip'],
+    usage: 'equip <name>         equip an item from your inventory',
+    run: (s, args, arg) => s.equipByName(arg),
+  },
+  {
+    names: ['unequip'],
+    usage: 'unequip <slot>       unequip a slot (head..feet, weapon1, weapon2)',
+    run: (s, args) =>
+      args[0]
+        ? s.unequipSlot(args[0])
+        : s.term('usage: unequip <slot>  (head, chest, hands, legs, feet, weapon1, weapon2)', 'is-warn'),
+  },
+  { names: ['next'], usage: 'next / prev          page through a long item list', run: (s) => s.nextPage() },
+  { names: ['prev', 'previous'], run: (s) => s.prevPage() },
+  {
+    names: ['play'],
+    usage: 'play <id>            launch a minigame',
+    run: (s, args, arg) =>
+      arg ? s.openMinigame(arg) : s.term('usage: play <id>. try: ' + minigameIds(), 'is-warn'),
+  },
+  { names: ['ls', 'games?'], usage: 'ls                   list minigame ids', run: (s) => s.term('minigames: ' + (minigameIds() || '(none)')) },
+  { names: ['export'], usage: 'export | import      download / load a save file', run: (s) => s.doExport() },
+  { names: ['import'], run: (s) => s.doImport() },
+  { names: ['clear', 'cls'], usage: 'clear                clear this terminal', run: (s) => s.clearTerm() },
+  { names: ['back'], usage: 'back / home          go up one menu / to the main menu', run: (s) => s.back() },
+  { names: ['home', 'menu'], run: (s) => s.goRoot() },
+  {
+    names: ['theme'],
+    usage: 'theme [colour]       show themes, or set one (e.g. theme blue)',
+    run: (s, args, arg) => (arg ? s.setTheme(arg.toLowerCase()) : s.themeUsage()),
+  },
+  {
+    names: ['animation', 'anim'],
+    usage: 'animation [on|off]   show / set the menu transition animation',
+    run: (s, args, arg) => (arg ? s.setAnimation(arg.toLowerCase()) : s.animationUsage()),
+  },
+  {
+    names: ['mobileview', 'mobile'],
+    usage: 'mobileview [on|off]  show / set the phone-friendly layout',
+    run: (s, args, arg) => (arg ? s.setMobileView(arg.toLowerCase()) : s.mobileViewUsage()),
+  },
+  {
+    names: ['termlines', 'termheight'],
+    usage: 'termlines <n>        set terminal height (in lines)',
+    run: (s, args, arg) => (arg ? s.setTermLines(arg) : s.termLinesUsage()),
+  },
+  {
+    names: ['loglines', 'logheight'],
+    usage: 'loglines <n>         set game log height (in lines)',
+    run: (s, args, arg) => (arg ? s.setLogLines(arg) : s.logLinesUsage()),
+  },
+  { names: ['ping'], usage: 'ping                 check the configured backend', run: (s) => s.pingBackend() },
+  { names: ['reset'], usage: 'reset                wipe local save', run: (s) => s.confirmReset() },
+];
+
+// name -> command entry (built once).
+const COMMAND_MAP = {};
+for (const c of COMMANDS) for (const n of c.names) COMMAND_MAP[n] = c;
+
+const minigameIds = () => MINIGAMES.map((m) => m.id).join(', ');
+
+function printHelp(shell) {
+  NAV_HELP.forEach((l) => shell.term(l));
+  shell.term('commands:');
+  for (const c of COMMANDS) {
+    if (!c.usage) continue;
+    for (const line of Array.isArray(c.usage) ? c.usage : [c.usage]) shell.term('  ' + line);
+  }
+}
 
 export function attachCommandLine(shell) {
   const input = shell.$input;
@@ -48,97 +158,11 @@ function run(shell, raw) {
   shell.term(`user@til:~$ ${raw}`, 'is-echo');
   const [cmd, ...args] = raw.split(/\s+/);
   const arg = args.join(' ');
-  const lc = cmd.toLowerCase();
 
-  // Reserved command words take priority over name matching.
-  switch (lc) {
-    case 'help':
-      if ((args[0] || '').toLowerCase() === 'items') shell.itemsHelp();
-      else HELP.forEach((line) => shell.term(line));
-      return;
-    case 'next':
-      shell.nextPage();
-      return;
-    case 'prev':
-    case 'previous':
-      shell.prevPage();
-      return;
-    case 'equip':
-      shell.equipByName(arg);
-      return;
-    case 'unequip':
-      if (!arg) shell.term('usage: unequip <slot>  (head, chest, hands, legs, feet, weapon1, weapon2)', 'is-warn');
-      else shell.unequipSlot(args[0]);
-      return;
-    case 'clear':
-    case 'cls':
-      shell.clearTerm();
-      return;
-    case 'back':
-      shell.back();
-      return;
-    case 'home':
-    case 'menu':
-      shell.goRoot();
-      return;
-    case 'play':
-      if (!arg) {
-        shell.term('usage: play <id>. try: ' + MINIGAMES.map((m) => m.id).join(', '), 'is-warn');
-      } else {
-        shell.openMinigame(arg);
-      }
-      return;
-    case 'ls':
-    case 'games?':
-      shell.term('minigames: ' + (MINIGAMES.map((m) => m.id).join(', ') || '(none)'));
-      return;
-    case 'export':
-      shell.doExport();
-      return;
-    case 'import':
-      shell.doImport();
-      return;
-    case 'theme':
-      if (!arg) shell.themeUsage();
-      else shell.setTheme(arg.toLowerCase());
-      return;
-    case 'animation':
-    case 'anim':
-      if (!arg) shell.animationUsage();
-      else shell.setAnimation(arg.toLowerCase());
-      return;
-    case 'mobileview':
-    case 'mobile':
-      if (!arg) shell.mobileViewUsage();
-      else shell.setMobileView(arg.toLowerCase());
-      return;
-    case 'termlines':
-    case 'termheight':
-      if (!arg) shell.termLinesUsage();
-      else shell.setTermLines(arg);
-      return;
-    case 'loglines':
-    case 'logheight':
-      if (!arg) shell.logLinesUsage();
-      else shell.setLogLines(arg);
-      return;
-    case 'ping':
-      shell.pingBackend();
-      return;
-    case 'reset':
-      shell.confirmReset();
-      return;
-    case 'stat':
-    case 'stats': {
-      const sub = (args[0] || '').toLowerCase();
-      if (sub === 'help') shell.statsHelp(args[1]);
-      else if (sub === 'add') shell.statsAdd(args[1], args[2]);
-      else if (sub === 'reset') shell.statsReset();
-      else shell.gotoStats(); // bare `stats` (or unknown sub) opens the screen
-      return;
-    }
-    default:
-      break;
+  const entry = COMMAND_MAP[cmd.toLowerCase()];
+  if (entry) {
+    entry.run(shell, args, arg);
+    return;
   }
 
   // A bare number selects a menu option.
@@ -150,31 +174,3 @@ function run(shell, raw) {
   // Otherwise match by name against the current menu / a screen.
   shell.resolveByName(raw);
 }
-
-const HELP = [
-  'navigation:',
-  '  <number>             select that menu option',
-  '  <name>               select by name, partial ok (e.g. "inv")',
-  '  back / home          go up one menu / to the main menu',
-  'commands:',
-  '  help                 show this help',
-  '  help items           list all item modifiers and tiers',
-  '  clear                clear this terminal',
-  '  stats                open the stats screen',
-  '  stats help           show stat growth per point',
-  '  stats add <s> <n>    allocate n points to stat s (e.g. stats add p.att 5)',
-  '  stats reset          refund all allocated points',
-  '  equip <name>         equip an item from your inventory',
-  '  unequip <slot>       unequip a slot (head..feet, weapon1, weapon2)',
-  '  next / prev          page through a long item list',
-  '  play <id>            launch a minigame',
-  '  ls                   list minigame ids',
-  '  export | import      download / load a save file',
-  '  theme [colour]        show themes, or set one (e.g. theme blue)',
-  '  animation [on|off]    show / set the menu transition animation',
-  '  mobileview [on|off]   show / set the phone-friendly layout',
-  '  termlines <n>         set terminal height (in lines)',
-  '  loglines <n>          set game log height (in lines)',
-  '  ping                 check the configured backend',
-  '  reset                wipe local save',
-];

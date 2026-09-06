@@ -12,7 +12,18 @@
 // If a stat ever needs a non-linear curve, give its def a `curve(points)`
 // function and statValue() will use it instead of the linear default.
 
-/** @typedef {{id:string,name:string,abbr:string,aliases:string[],base:number,perPoint:number,fmt:'int'|'pct',curve?:(points:number)=>number}} StatDef */
+/** @typedef {{id:string,name:string,abbr:string,aliases:string[],base:number,perPoint:number,fmt:'int'|'pct',help?:string[],curve?:(points:number)=>number}} StatDef */
+
+// HELP COUPLING: each stat's `help` lines are printed verbatim by
+// `stats help <stat>` (see shell/shell.js statsHelp). Some help lines restate
+// COMBAT EQUATIONS whose real implementation lives in the dungeon minigame
+// (frontend/public/minigames/dungeon/index.html) — it's a sandboxed iframe and
+// can't import this module, so the numbers are duplicated on purpose. If you
+// change a formula or constant on one side, update the other:
+//   - P.Def / M.Def mitigation  -> dungeon computeAttack()
+//   - Accuracy / Dodge hit%      -> dungeon hitChance() (and MIN_HIT)
+//   - Crit Damage multiplier     -> dungeon computeAttack()
+//   - Luck -> loot rarity         -> game/items.js rollRarity() (LUCK_K, RARITIES)
 
 /** Ordered stat list. `aliases[0]` is the canonical command key. @type {StatDef[]} */
 export const STAT_DEFS = [
@@ -104,13 +115,6 @@ export function findStat(input) {
 export function statValue(def, points = 0) {
   const p = Number(points) || 0;
   return typeof def.curve === 'function' ? def.curve(p) : def.base + def.perPoint * p;
-}
-
-/** Compute every effective stat value from an allocation map (for battles etc). */
-export function computeStats(alloc = {}) {
-  const out = {};
-  for (const d of STAT_DEFS) out[d.id] = statValue(d, alloc[d.id] || 0);
-  return out;
 }
 
 /** Human-readable value, e.g. "112" or "90.5%". */

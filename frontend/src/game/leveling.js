@@ -12,6 +12,8 @@ export const POINTS_PER_LEVEL = 5;
 /** Total XP required to advance FROM `level` to `level + 1`. */
 export function xpForLevel(level) {
   // 100 * currentLevel^1.1  (L1->2 = 100, L2->3 ~= 214, L10->11 ~= 1258, ...)
+  // NOTE: this curve isn't quoted in any help command yet. If you ever surface
+  // it (e.g. a `help leveling`), document the exponent there and reference this.
   return Math.floor(100 * Math.pow(level, 1.1));
 }
 

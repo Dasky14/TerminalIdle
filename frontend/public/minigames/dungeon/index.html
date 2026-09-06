@@ -161,6 +161,9 @@
 
       // Damage uses the attacker's stronger offense vs the matching defense.
       // Mitigation follows: damage taken = raw * (1 - def/(def+50)).
+      // Crit multiplies by critDmg/100 (e.g. 150 -> 1.5x).
+      // HELP COUPLING: the '50' mitigation constant and the crit multiplier are
+      // documented in stats.js (P.Def/M.Def and CritDmg `help`). Change both.
       // `defPen` (0..1) is defense ignored by the attacker (e.g. Radiant Edge).
       // Computes the hit WITHOUT applying it — the caller applies, so effects
       // like Bulwark can intercept first.
@@ -231,6 +234,9 @@
       }
 
       // Hit chance = min(100%, Accuracy / (2 * Dodge)), floored at MIN_HIT.
+      // HELP COUPLING: this formula + the 10% floor are documented in stats.js
+      // (Accuracy and Dodge `help`). If you change the 2x, the floor, or the
+      // shape, update those help lines too.
       function hitChance(attacker, defender) {
         var d = defender.dodge || 0;
         if (d <= 0) return 1;

@@ -32,6 +32,9 @@ export const RARITY_TIERS = ['common', 'rare', 'epic', 'legendary'];
 // which raises the chance of landing in the high-rarity bands. LUCK_K is tuned
 // so ~luck 1000 gives ~1% legendary (from a 0.1% base). Bump it to make luck
 // pay off faster.
+// HELP COUPLING: the Luck `help` in stats.js describes this, and `stats help
+// luck` prints live odds via rarityChances(). The base rates above are also
+// quoted there — keep them in sync if you retune weights or LUCK_K.
 export const LUCK_K = 0.009;
 
 // Base items. `slot` is the equip slot; weapons use slot 'weapon' with `hands`:
