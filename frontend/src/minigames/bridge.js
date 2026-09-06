@@ -15,7 +15,8 @@
 // iframe's contentWindow, and ignores anything lacking the __til tag.
 
 import { applyReward } from '../game/rewards.js';
-import { state, emitChange } from '../game/state.js';
+import { state, emitChange, onChange } from '../game/state.js';
+import { effectiveStats, activeEffects } from '../game/character.js';
 
 const TAG = '__til';
 
@@ -33,6 +34,7 @@ const TAG = '__til';
 export function createBridge({ iframe, minigame, onReward, onRequestClose }) {
   let unityInstance = null; // set by the loader page for Unity builds
   let disposed = false;
+  let lastStatsJson = null; // dedup: only push stats when they actually change
 
   function isFromThisFrame(event) {
     return iframe && event.source === iframe.contentWindow;
@@ -63,10 +65,16 @@ export function createBridge({ iframe, minigame, onReward, onRequestClose }) {
 
     switch (data.type) {
       case 'ready': {
-        // Hand the minigame its context: player level + its own saved slice.
+        // Hand the minigame its context: player level, combat stats, active
+        // item effects, and its own saved slice.
+        const stats = effectiveStats();
+        const effects = activeEffects();
+        lastStatsJson = JSON.stringify({ stats, effects });
         send('init', {
           minigameId: minigame.id,
           profile: { level: state.profile.level },
+          stats,
+          effects,
           save: state.minigames[minigame.id] || null,
         });
         break;
@@ -97,6 +105,19 @@ export function createBridge({ iframe, minigame, onReward, onRequestClose }) {
 
   window.addEventListener('message', handleMessage);
 
+  // Push updated combat stats to the minigame whenever they change (e.g. the
+  // player allocates points or changes gear). The minigame decides when to
+  // apply them (the dungeon applies at the end of the current fight).
+  const unsubStats = onChange(() => {
+    if (disposed) return;
+    const payload = { stats: effectiveStats(), effects: activeEffects() };
+    const json = JSON.stringify(payload);
+    if (json !== lastStatsJson) {
+      lastStatsJson = json;
+      send('stats', payload); // { stats, effects }
+    }
+  });
+
   return {
     send,
     /** Loader pages for Unity builds call this once the instance exists. */
@@ -106,6 +127,7 @@ export function createBridge({ iframe, minigame, onReward, onRequestClose }) {
     dispose() {
       if (disposed) return;
       disposed = true;
+      if (unsubStats) unsubStats();
       try {
         send('shutdown');
       } catch {

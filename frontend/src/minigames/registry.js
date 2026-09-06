@@ -16,13 +16,13 @@
 
 export const MINIGAMES = [
   {
-    id: 'sample-clicker',
-    title: 'Sample Clicker',
-    key: 'C',
-    entry: 'minigames/sample-clicker/index.html',
+    id: 'dungeon',
+    title: 'Endless Dungeon',
+    key: 'D',
+    entry: 'minigames/dungeon/index.html',
     kind: 'html',
-    size: { w: 420, h: 340 },
-    desc: 'A tiny demo that grants XP and scrap — proves the reward loop.',
+    size: { w: 540, h: 480 },
+    desc: 'Auto-battle deeper each floor. Enemies drop gear and XP; die and you restart the floor.',
   },
 ];
 

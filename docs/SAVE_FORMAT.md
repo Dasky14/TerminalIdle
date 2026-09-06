@@ -21,7 +21,7 @@ file from **System → Export / Import** (or the `export` / `import` commands).
     "credits": 0
   },
   "minigames": {
-    "sample-clicker": { "count": 42 }            // per-minigame slice, opaque to the shell
+    "dungeon": { "floor": 3 }                    // per-minigame slice, opaque to the shell
   },
   "meta": {
     "createdAt": 1735689600000,   // epoch ms

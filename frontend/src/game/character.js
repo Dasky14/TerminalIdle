@@ -5,7 +5,36 @@
 // testable/graphable.
 
 import { state, emitChange } from './state.js';
-import { findStat, statValue } from './stats.js';
+import { findStat, statValue, STAT_DEFS } from './stats.js';
+import { equipmentBonuses, EQUIP_SLOTS } from './equipment.js';
+import { itemEffects } from './items.js';
+
+/**
+ * The player's effective combat stats: allocation value + equipment bonuses,
+ * per stat id. Used to feed minigames (e.g. the dungeon) the real numbers.
+ * @returns {Record<string, number>}
+ */
+export function effectiveStats() {
+  const bonuses = equipmentBonuses();
+  const out = {};
+  for (const d of STAT_DEFS) {
+    out[d.id] = statValue(d, state.stats[d.id] || 0) + (bonuses[d.id] || 0);
+  }
+  return out;
+}
+
+/**
+ * Active special effects from all equipped items, as structured descriptors
+ * ({ id, value?, desc }). Fed to minigames so they can implement the effects.
+ */
+export function activeEffects() {
+  const out = [];
+  for (const slot of EQUIP_SLOTS) {
+    const it = state.equipment[slot];
+    for (const e of itemEffects(it)) out.push({ id: e.id, value: e.value, desc: e.desc });
+  }
+  return out;
+}
 
 /**
  * Spend (or, with a negative amount, refund) points on a stat.

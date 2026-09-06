@@ -65,7 +65,9 @@ export const SUFFIXES = {
   luck: ['of Luck', 'of Fortune', 'of Destiny'],
 };
 
-// Named legendary items — fixed stats and a unique effect (flavor for now).
+// Named legendary items — fixed stats and structured unique effects.
+// An effect is data the combat engine can act on: { id, value?, desc }.
+// See minigames/dungeon for the combat hooks that implement each id.
 export const LEGENDARIES = [
   {
     key: 'excalibur',
@@ -73,7 +75,7 @@ export const LEGENDARIES = [
     slot: 'weapon',
     hands: 2,
     stats: { patt: 25, critRate: 10 },
-    effect: 'Radiant Edge — strikes ignore a portion of defense.',
+    effects: [{ id: 'ignoreDefense', value: 0.3, desc: 'Radiant Edge — ignores 30% of enemy defense.' }],
   },
   {
     key: 'aegis',
@@ -81,14 +83,14 @@ export const LEGENDARIES = [
     slot: 'weapon',
     hands: 'off',
     stats: { pdef: 15, mdef: 15, hp: 50 },
-    effect: 'Bulwark — negate the first hit taken each battle.',
+    effects: [{ id: 'firstHitShield', desc: 'Bulwark — negates the first hit each battle.' }],
   },
   {
     key: 'sandals',
     name: "Hermes' Sandals",
     slot: 'feet',
     stats: { speed: 15, acc: 5 },
-    effect: 'Fleetfooted — always act first.',
+    effects: [{ id: 'alwaysFirst', desc: 'Fleetfooted — you always act first.' }],
   },
 ];
 
@@ -150,7 +152,7 @@ function instantiateLegendary(def) {
     rarity: 'legendary',
     mods: [],
     stats: { ...l.stats },
-    effect: l.effect,
+    effects: (l.effects || []).map((e) => ({ ...e })),
   };
 }
 
@@ -174,6 +176,22 @@ export function generateItem(opts = {}) {
     mods: mods.map((m) => ({ statId: m.statId, kind: m.kind, tier: m.tier, name: m.name, value: m.value })),
     stats: mergeStats(base.base, mods),
   };
+}
+
+/**
+ * The structured effects of an item. Reads the instance's `effects`, falling
+ * back to the legendary definition by base key — so items saved before effects
+ * were structured (or that only carry the old `effect` string) still work.
+ * @returns {Array<{id:string,value?:number,desc:string}>}
+ */
+export function itemEffects(item) {
+  if (!item) return [];
+  if (Array.isArray(item.effects)) return item.effects;
+  if (item.rarity === 'legendary') {
+    const def = LEGENDARIES.find((l) => l.key === item.base);
+    if (def && def.effects) return def.effects;
+  }
+  return [];
 }
 
 /** Rarity ordering for sorting (best first). */

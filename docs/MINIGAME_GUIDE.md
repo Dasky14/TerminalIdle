@@ -49,8 +49,9 @@ Copy [`minigame-sdk/til-sdk.js`](../minigame-sdk/til-sdk.js) next to your
 </script>
 ```
 
-`sample-clicker` is a complete working example — see
-[`frontend/public/minigames/sample-clicker/`](../frontend/public/minigames/sample-clicker/).
+`dungeon` is a complete working example (it also uses `TIL.onInit`'s `stats` /
+`effects` context and `{ roll: 'equipment' }` reward drops) — see
+[`frontend/public/minigames/dungeon/`](../frontend/public/minigames/dungeon/).
 
 ### SDK reference
 

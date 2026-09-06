@@ -52,9 +52,9 @@ npm install
 npm run dev
 ```
 
-Open the printed URL. Navigate with the keyboard (letters / arrows / Esc) or the mouse.
-Open **Games → Sample Clicker** to see the reward loop update your global XP and
-resources, then reload the page — your progress persists.
+Open the printed URL. Navigate by typing an option's number/name or clicking it.
+Open **Games → Endless Dungeon** to auto-battle for XP and gear, which feed your
+global level, stat points, and inventory — then reload the page; progress persists.
 
 Build a static site (for GitHub Pages, etc.):
 

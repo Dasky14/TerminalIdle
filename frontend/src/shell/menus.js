@@ -26,7 +26,7 @@ import {
   isWeapon2Blocked,
   equipmentBonuses,
 } from '../game/equipment.js';
-import { describeStats, compareItems } from '../game/items.js';
+import { describeStats, compareItems, itemEffects } from '../game/items.js';
 
 const BACK = { key: 'B', label: 'Back', action: (shell) => shell.back() };
 
@@ -71,16 +71,25 @@ export function buildScreen(id, shell) {
     case 'stats': {
       const snap = levelSnapshot();
       const bar = progressBar(snap.progress, 20);
+      // Base = starting value + allocated points. Total = base + equipment.
+      const bonuses = equipmentBonuses();
       const body = [
         `Level    : ${snap.level}`,
         `XP       : ${snap.xpIntoLevel} / ${snap.xpForNext}`,
         `Progress : ${bar} ${(snap.progress * 100).toFixed(0)}%`,
         `Points   : ${state.statPoints} unspent`,
         '',
+        `${''.padEnd(9)}${'Base'.padStart(7)}${'Total'.padStart(9)}`,
         ...STAT_DEFS.map((d) => {
           const pts = state.stats[d.id] || 0;
-          const val = formatStat(d, statValue(d, pts));
-          return `${(d.abbr + ':').padEnd(9)}${val.padStart(6)}   (${pts} pts)`;
+          const base = statValue(d, pts);
+          const total = base + (bonuses[d.id] || 0);
+          return (
+            `${(d.abbr + ':').padEnd(9)}` +
+            `${formatStat(d, base).padStart(7)}` +
+            `${formatStat(d, total).padStart(9)}` +
+            `   (${pts} pts)`
+          );
         }),
       ];
       return {
@@ -175,7 +184,7 @@ export function buildScreen(id, shell) {
       if (equipped) {
         const desc = describeStats(equipped);
         body.push(`Equipped: [${equipped.rarity}] ${equipped.name}${desc ? '  (' + desc + ')' : ''}`);
-        if (equipped.effect) body.push(`Effect: ${equipped.effect}`);
+        for (const e of itemEffects(equipped)) body.push(`Effect: ${e.desc}`);
       } else {
         body.push('Equipped: (none)');
       }
@@ -191,7 +200,8 @@ export function buildScreen(id, shell) {
       }
       for (const it of slice) {
         const desc = describeStats(it);
-        const hint = `${it.rarity}${desc ? ' · ' + desc : ''}${it.effect ? ' · ' + it.effect : ''}`;
+        const fx = itemEffects(it).map((e) => e.desc).join('; ');
+        const hint = `${it.rarity}${desc ? ' · ' + desc : ''}${fx ? ' · ' + fx : ''}`;
         items.push({ label: it.name, hint, action: (s) => s.equipIntoSlot(it.uid) });
       }
       items.push(...pageItems(page, pages), BACK);

@@ -14,11 +14,11 @@ router = APIRouter(prefix="/minigames", tags=["minigames"])
 # TODO: source this from a database or config so it can change at runtime.
 _MINIGAMES: list[MinigameMeta] = [
     MinigameMeta(
-        id="sample-clicker",
-        title="Sample Clicker",
+        id="dungeon",
+        title="Endless Dungeon",
         kind="html",
-        entry="minigames/sample-clicker/index.html",
-        desc="A tiny demo that grants XP and scrap.",
+        entry="minigames/dungeon/index.html",
+        desc="Auto-battle deeper each floor for gear and XP.",
     ),
 ]
 

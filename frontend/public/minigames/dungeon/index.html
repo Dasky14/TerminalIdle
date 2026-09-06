@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Endless Dungeon</title>
+    <style>
+      :root {
+        --fg: #33ff66;
+        --dim: #1c8a3d;
+        --bright: #b9ffcf;
+        --bg: #05080a;
+        --danger: #ff6b6b;
+        --warn: #ffd166;
+        --gold: #ffcf5f;
+      }
+      html, body { margin: 0; height: 100%; }
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        font-family: "Consolas", monospace;
+        font-size: 13px;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+      .top {
+        flex: 0 0 auto;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--dim);
+      }
+      .row { display: flex; justify-content: space-between; align-items: baseline; }
+      .title { color: var(--bright); letter-spacing: 1px; }
+      .loc { color: var(--dim); }
+      .bars { padding: 8px 10px; flex: 0 0 auto; }
+      .bar-label { display: flex; justify-content: space-between; margin-top: 4px; }
+      .bar {
+        height: 12px;
+        background: rgba(255,255,255,0.07);
+        border: 1px solid var(--dim);
+        margin-top: 2px;
+        position: relative;
+        overflow: hidden;
+      }
+      .bar > span { display: block; height: 100%; transition: width 0.25s; }
+      .bar.hp > span { background: var(--fg); }
+      .bar.enemy > span { background: var(--danger); }
+      .fx { color: var(--gold); font-size: 11px; margin-top: 3px; min-height: 1em; }
+      .vs { text-align: center; color: var(--dim); margin: 6px 0 0; }
+      .log {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 8px 10px;
+        border-top: 1px solid var(--dim);
+        white-space: pre-wrap;
+      }
+      .log div { margin: 1px 0; }
+      .is-hit { color: var(--fg); }
+      .is-crit { color: var(--warn); }
+      .is-loot { color: var(--gold); }
+      .is-bad { color: var(--danger); }
+      .is-info { color: var(--dim); }
+      .is-boss { color: var(--bright); }
+      .controls { flex: 0 0 auto; display: flex; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--dim); }
+      button {
+        font-family: inherit; font-size: 12px;
+        background: transparent; color: var(--fg);
+        border: 1px solid var(--dim); border-radius: 3px;
+        padding: 6px 10px; cursor: pointer;
+      }
+      button:hover { background: var(--fg); color: var(--bg); }
+      .empty-hp { color: var(--dim); }
+    </style>
+  </head>
+  <body>
+    <div class="top">
+      <div class="row">
+        <span class="title">ENDLESS DUNGEON</span>
+        <span class="loc" id="loc">Floor 1 · Room 1</span>
+      </div>
+    </div>
+
+    <div class="bars">
+      <div class="bar-label"><span id="pname">You</span><span id="php">--/--</span></div>
+      <div class="bar hp"><span id="pbar" style="width:100%"></span></div>
+      <div class="fx" id="fx"></div>
+      <div class="vs" id="vs">— entering the dungeon —</div>
+      <div class="bar-label"><span id="ename">&nbsp;</span><span id="ehp">&nbsp;</span></div>
+      <div class="bar enemy"><span id="ebar" style="width:0%"></span></div>
+    </div>
+
+    <div class="log" id="log"></div>
+
+    <div class="controls">
+      <button id="restart">Restart at Floor 1</button>
+      <button id="pause">Pause</button>
+      <button id="close">Close</button>
+    </div>
+
+    <script src="til-sdk.js"></script>
+    <script>
+      // ---- Tunables ---------------------------------------------------------
+      var ROOMS_PER_FLOOR = 6; // last room is the boss
+      var CHEST_CHANCE = 0.22;
+      var ENEMY_DROP_CHANCE = 0.35;
+      var FLOOR_GROWTH = 0.15; // enemy stat multiplier grows 15% per floor
+      var TURN_MS = 1000;
+      var XP_PER_ENEMY = 10; // * floor
+      var XP_PER_BOSS = 60; // * floor
+
+      // ---- Enemy archetypes (base level-1 stats) ---------------------------
+      var ENEMIES = [
+        { name: 'Slime',    hp: 40, patt: 6,  matt: 0,  pdef: 2, mdef: 2, speed: 5,  acc: 90, critRate: 2, critDmg: 150, luck: 1 },
+        { name: 'Goblin',   hp: 50, patt: 9,  matt: 0,  pdef: 3, mdef: 2, speed: 9,  acc: 90, critRate: 5, critDmg: 150, luck: 2 },
+        { name: 'Bat',      hp: 30, patt: 7,  matt: 0,  pdef: 1, mdef: 1, speed: 14, acc: 90, critRate: 8, critDmg: 150, luck: 3 },
+        { name: 'Skeleton', hp: 60, patt: 11, matt: 0,  pdef: 5, mdef: 1, speed: 7,  acc: 90, critRate: 5, critDmg: 150, luck: 1 },
+        { name: 'Acolyte',  hp: 45, patt: 0,  matt: 12, pdef: 2, mdef: 5, speed: 8,  acc: 90, critRate: 5, critDmg: 150, luck: 2 },
+      ];
+      var BOSSES = [
+        { name: 'Ogre',       hp: 120, patt: 16, matt: 0,  pdef: 6, mdef: 4, speed: 6,  acc: 90, critRate: 5,  critDmg: 160, luck: 3 },
+        { name: 'Dark Mage',  hp: 100, patt: 0,  matt: 20, pdef: 4, mdef: 8, speed: 9,  acc: 90, critRate: 8,  critDmg: 160, luck: 4 },
+        { name: 'Dragonling', hp: 150, patt: 18, matt: 10, pdef: 8, mdef: 6, speed: 10, acc: 90, critRate: 10, critDmg: 175, luck: 5 },
+      ];
+
+      // ---- State ------------------------------------------------------------
+      var player = null; // { name, hp, maxhp, patt, ... }
+      var floor = 1;
+      var room = 1;
+      var combat = null; // { enemy, activeIsPlayer, isBoss }
+      var paused = false;
+      var loopTimer = null;
+      var transitionTimer = null;
+
+      var rand = function (n) { return Math.floor(Math.random() * n); };
+      var pick = function (a) { return a[rand(a.length)]; };
+
+      function el(id) { return document.getElementById(id); }
+      function log(text, cls) {
+        var d = document.createElement('div');
+        d.className = cls || '';
+        d.textContent = text;
+        var box = el('log');
+        box.appendChild(d);
+        box.scrollTop = box.scrollHeight;
+        while (box.childNodes.length > 120) box.removeChild(box.firstChild);
+      }
+
+      function floorMultiplier(f) { return 1 + FLOOR_GROWTH * (f - 1); }
+
+      function makeEnemy(archetype, f) {
+        var m = floorMultiplier(f);
+        var e = { name: archetype.name, level: f };
+        ['hp', 'patt', 'matt', 'pdef', 'mdef', 'speed', 'acc', 'critRate', 'critDmg', 'luck'].forEach(
+          function (k) { e[k] = Math.round(archetype[k] * m); }
+        );
+        e.maxhp = e.hp;
+        return e;
+      }
+
+      // Damage uses the attacker's stronger offense vs the matching defense.
+      // Mitigation follows: damage taken = raw * (1 - def/(def+50)).
+      // `defPen` (0..1) is defense ignored by the attacker (e.g. Radiant Edge).
+      // Computes the hit WITHOUT applying it — the caller applies, so effects
+      // like Bulwark can intercept first.
+      function computeAttack(attacker, defender, defPen) {
+        var physical = attacker.patt >= attacker.matt;
+        var raw = physical ? attacker.patt : attacker.matt;
+        var def = (physical ? defender.pdef : defender.mdef) * (1 - (defPen || 0));
+        if (def < 0) def = 0;
+        var dmg = raw * (50 / (def + 50));
+        var crit = Math.random() * 100 < attacker.critRate;
+        if (crit) dmg *= attacker.critDmg / 100;
+        dmg = Math.max(1, Math.round(dmg));
+        return { dmg: dmg, crit: crit, physical: physical };
+      }
+
+      // ---- Flow -------------------------------------------------------------
+      function startFloor(f) {
+        clearTimeout(transitionTimer);
+        floor = f;
+        room = 1;
+        player.hp = player.maxhp;
+        log('== Floor ' + f + ' ==', 'is-boss');
+        TIL.saveProgress({ floor: floor });
+        render();
+        enterRoom();
+      }
+
+      function enterRoom() {
+        combat = null;
+        render();
+        if (room >= ROOMS_PER_FLOOR) {
+          // Boss room.
+          var b = makeEnemy(pick(BOSSES), floor);
+          b.isBoss = true;
+          log('Room ' + room + ': BOSS — ' + b.name + ' (Lv ' + floor + ')', 'is-boss');
+          startCombat(b, true);
+          return;
+        }
+        if (Math.random() < CHEST_CHANCE) {
+          log('Room ' + room + ': you find a treasure chest!', 'is-loot');
+          var drops = 1 + rand(2); // 1-2
+          for (var i = 0; i < drops; i++) TIL.sendReward({ items: [{ roll: 'equipment' }] });
+          log('  looted ' + drops + ' item(s).', 'is-loot');
+          transitionTimer = setTimeout(advance, 900);
+          return;
+        }
+        var e = makeEnemy(pick(ENEMIES), floor);
+        log('Room ' + room + ': a ' + e.name + ' appears (Lv ' + floor + ')', 'is-info');
+        startCombat(e, false);
+      }
+
+      function startCombat(enemy, isBoss) {
+        // Fleetfooted (alwaysFirst) overrides the speed check.
+        var playerFirst = effectMap.alwaysFirst ? true : player.speed >= enemy.speed;
+        combat = {
+          enemy: enemy,
+          isBoss: isBoss,
+          activeIsPlayer: playerFirst,
+          shieldReady: !!effectMap.firstHitShield, // Bulwark: one free block
+        };
+        var why = effectMap.alwaysFirst
+          ? 'Fleetfooted — you strike first.'
+          : playerFirst
+          ? 'You are faster — you strike first.'
+          : enemy.name + ' is faster — it strikes first.';
+        log(why, 'is-info');
+        render();
+      }
+
+      function tick() {
+        if (paused || !combat) return;
+        var playerTurn = combat.activeIsPlayer;
+        var attacker = playerTurn ? player : combat.enemy;
+        var defender = playerTurn ? combat.enemy : player;
+        var defPen = playerTurn ? effectMap.ignoreDefense || 0 : 0; // Radiant Edge
+        var r = computeAttack(attacker, defender, defPen);
+
+        // Bulwark: negate the first hit that would land on the player.
+        if (!playerTurn && combat.shieldReady && r.dmg > 0) {
+          combat.shieldReady = false;
+          log('Bulwark negates the hit!', 'is-info');
+        } else {
+          defender.hp = Math.max(0, defender.hp - r.dmg);
+          var arrow = playerTurn ? 'You hit ' + combat.enemy.name : combat.enemy.name + ' hits you';
+          log(
+            arrow + ' for ' + r.dmg + (r.crit ? ' (CRIT!)' : '') + (r.physical ? '' : ' [magic]'),
+            r.crit ? 'is-crit' : playerTurn ? 'is-hit' : 'is-bad'
+          );
+        }
+
+        if (defender.hp <= 0) {
+          if (defender === combat.enemy) onEnemyDefeated();
+          else onPlayerDeath();
+        } else {
+          combat.activeIsPlayer = !combat.activeIsPlayer;
+        }
+        render();
+      }
+
+      function onEnemyDefeated() {
+        var enemy = combat.enemy;
+        var isBoss = combat.isBoss;
+        combat = null;
+        var xp = Math.round((isBoss ? XP_PER_BOSS : XP_PER_ENEMY) * floor);
+        TIL.sendReward({ xp: xp });
+        log('Defeated ' + enemy.name + '! +' + xp + ' XP', 'is-info');
+        var dropped = 0;
+        if (isBoss) {
+          dropped = 1 + rand(2); // boss: 1-2 guaranteed
+        } else if (Math.random() < ENEMY_DROP_CHANCE) {
+          dropped = 1;
+        }
+        for (var i = 0; i < dropped; i++) TIL.sendReward({ items: [{ roll: 'equipment' }] });
+        if (dropped) log('  it dropped ' + dropped + ' item(s).', 'is-loot');
+        flushUpdate(); // apply any stat/effect changes now that the fight is over
+        render();
+        transitionTimer = setTimeout(advance, 1000);
+      }
+
+      function onPlayerDeath() {
+        combat = null;
+        log('You died on Floor ' + floor + '. Back to the start of the floor.', 'is-bad');
+        flushUpdate(); // apply any queued stat/effect changes before the floor resets
+        render();
+        transitionTimer = setTimeout(function () { startFloor(floor); }, 1600);
+      }
+
+      function advance() {
+        room += 1;
+        if (room > ROOMS_PER_FLOOR) {
+          log('Floor ' + floor + ' cleared!', 'is-boss');
+          startFloor(floor + 1);
+        } else {
+          enterRoom();
+        }
+      }
+
+      // ---- Render -----------------------------------------------------------
+      function pct(cur, max) { return max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0; }
+      function render() {
+        el('loc').textContent = 'Floor ' + floor + ' · Room ' + room + '/' + ROOMS_PER_FLOOR;
+        el('pname').textContent = 'You';
+        el('php').textContent = Math.ceil(player.hp) + '/' + player.maxhp;
+        el('pbar').style.width = pct(player.hp, player.maxhp) + '%';
+        if (combat && combat.enemy) {
+          var e = combat.enemy;
+          el('vs').textContent = 'VS';
+          el('ename').textContent = e.name + ' (Lv ' + e.level + ')';
+          el('ehp').textContent = Math.ceil(e.hp) + '/' + e.maxhp;
+          el('ebar').style.width = pct(e.hp, e.maxhp) + '%';
+        } else {
+          el('vs').textContent = '— traveling —';
+          el('ename').innerHTML = '&nbsp;';
+          el('ehp').innerHTML = '&nbsp;';
+          el('ebar').style.width = '0%';
+        }
+      }
+
+      // ---- Boot -------------------------------------------------------------
+      var pending = null; // { stats, effects } queued to apply after a fight
+      var effectMap = {}; // { effectId: value|true } — active item effects
+      var effectsList = []; // [{ id, value?, desc }] for display
+
+      function normalizeEffects(list) {
+        var map = {};
+        (list || []).forEach(function (e) {
+          map[e.id] = typeof e.value === 'number' ? e.value : true;
+        });
+        return map;
+      }
+
+      function setEffects(list) {
+        effectsList = list || [];
+        effectMap = normalizeEffects(effectsList);
+        renderEffects();
+      }
+
+      function renderEffects() {
+        var box = el('fx');
+        if (!box) return;
+        box.textContent = effectsList.length
+          ? '* ' + effectsList.map(function (e) { return e.desc; }).join('   * ')
+          : '';
+      }
+
+      function statFields(stats) {
+        var s = stats || {};
+        var g = function (k, d) { return typeof s[k] === 'number' ? s[k] : d; };
+        return {
+          maxhp: Math.max(1, Math.round(g('hp', 100))),
+          patt: g('patt', 10), matt: g('matt', 10),
+          pdef: g('pdef', 5), mdef: g('mdef', 5),
+          speed: g('speed', 10), acc: g('acc', 90),
+          critRate: g('critRate', 5), critDmg: g('critDmg', 150), luck: g('luck', 0),
+        };
+      }
+
+      function buildPlayer(stats) {
+        var f = statFields(stats);
+        f.name = 'You';
+        f.hp = f.maxhp;
+        return f;
+      }
+
+      // Apply new stats to the existing player WITHOUT healing: a higher max HP
+      // just raises the cap; current HP only drops if the new max is lower.
+      function applyPlayerStats(stats) {
+        var f = statFields(stats);
+        player.patt = f.patt; player.matt = f.matt;
+        player.pdef = f.pdef; player.mdef = f.mdef;
+        player.speed = f.speed; player.acc = f.acc;
+        player.critRate = f.critRate; player.critDmg = f.critDmg; player.luck = f.luck;
+        player.maxhp = f.maxhp;
+        if (player.hp > player.maxhp) player.hp = player.maxhp;
+      }
+
+      // Updates (stats + effects) arrive from the shell whenever they change.
+      // Apply immediately if idle; otherwise wait for the current fight to end.
+      function receiveUpdate(payload) {
+        pending = payload || {};
+        if (!player) return;
+        if (combat) log('(equipment change applies after this fight)', 'is-info');
+        else flushUpdate();
+      }
+
+      function flushUpdate() {
+        if (!pending || !player) return;
+        if (pending.stats) applyPlayerStats(pending.stats);
+        if (pending.effects) setEffects(pending.effects);
+        pending = null;
+        log(
+          'Updated — HP ' + Math.ceil(player.hp) + '/' + player.maxhp +
+            ', P.Att ' + player.patt + ', Speed ' + player.speed,
+          'is-info'
+        );
+        render();
+      }
+
+      TIL.onInit(function (ctx) {
+        player = buildPlayer(ctx.stats);
+        setEffects(ctx.effects || []);
+        var startFloorNum = ctx.save && ctx.save.floor ? ctx.save.floor : 1;
+        log('You enter the dungeon. (HP ' + player.maxhp + ', P.Att ' + player.patt + ', Speed ' + player.speed + ')', 'is-info');
+        if (effectsList.length) {
+          log('Effects: ' + effectsList.map(function (e) { return e.desc; }).join(' | '), 'is-loot');
+        }
+        startFloor(startFloorNum);
+        if (!loopTimer) loopTimer = setInterval(tick, TURN_MS);
+      });
+
+      TIL.onMessage(function (type, payload) {
+        if (type === 'pause') paused = true;
+        else if (type === 'resume') paused = false;
+        else if (type === 'stats') receiveUpdate(payload);
+      });
+
+      el('restart').addEventListener('click', function () {
+        log('Restarting from Floor 1...', 'is-info');
+        startFloor(1);
+      });
+      el('pause').addEventListener('click', function () {
+        paused = !paused;
+        el('pause').textContent = paused ? 'Resume' : 'Pause';
+        log(paused ? '(paused)' : '(resumed)', 'is-info');
+      });
+      el('close').addEventListener('click', function () { TIL.close(); });
+
+      // Fallback if init never arrives (shouldn't happen in the shell).
+      setTimeout(function () {
+        if (!player) {
+          player = buildPlayer(null);
+          startFloor(1);
+          if (!loopTimer) loopTimer = setInterval(tick, TURN_MS);
+        }
+      }, 1500);
+    </script>
+  </body>
+</html>
