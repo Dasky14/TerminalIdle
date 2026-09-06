@@ -47,12 +47,20 @@
       .bar.enemy > span { background: var(--danger); }
       .fx { color: var(--gold); font-size: 11px; margin-top: 3px; min-height: 1em; }
       .vs { text-align: center; color: var(--dim); margin: 6px 0 0; }
+      /* Non-scrolling wrapper so the stats overlay stays put while the log
+         scrolls inside it. */
+      .logwrap {
+        flex: 1 1 auto;
+        min-height: 0;
+        position: relative;
+        display: flex;
+        border-top: 1px solid var(--dim);
+      }
       .log {
         flex: 1 1 auto;
         min-height: 0;
         overflow-y: auto;
         padding: 8px 10px;
-        border-top: 1px solid var(--dim);
         white-space: pre-wrap;
       }
       .log div { margin: 1px 0; }
@@ -62,7 +70,23 @@
       .is-bad { color: var(--danger); }
       .is-info { color: var(--dim); }
       .is-boss { color: var(--bright); }
-      .controls { flex: 0 0 auto; display: flex; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--dim); }
+      /* Stats overlay — toggled over the combat log. */
+      .statspanel {
+        position: absolute;
+        inset: 0;
+        display: none;
+        overflow-y: auto;
+        padding: 8px 10px;
+        background: var(--bg);
+      }
+      .statspanel.show { display: block; }
+      .sp-title { color: var(--bright); letter-spacing: 1px; margin-bottom: 4px; }
+      .sp-row { display: grid; grid-template-columns: 68px 1fr 1fr; column-gap: 8px; line-height: 1.55; white-space: nowrap; }
+      .sp-l { color: var(--dim); }
+      .sp-p { color: var(--fg); text-align: right; }
+      .sp-e { color: var(--danger); text-align: right; }
+      .sp-row.head .sp-p, .sp-row.head .sp-e { color: var(--bright); }
+      .controls { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--dim); }
       button {
         font-family: inherit; font-size: 12px;
         background: transparent; color: var(--fg);
@@ -90,9 +114,13 @@
       <div class="bar enemy"><span id="ebar" style="width:0%"></span></div>
     </div>
 
-    <div class="log" id="log"></div>
+    <div class="logwrap">
+      <div class="log" id="log"></div>
+      <div class="statspanel" id="statspanel"></div>
+    </div>
 
     <div class="controls">
+      <button id="statsbtn">Stats</button>
       <button id="restart">Restart at Floor 1</button>
       <button id="pause">Pause</button>
       <button id="close">Close</button>
@@ -139,22 +167,34 @@
       function el(id) { return document.getElementById(id); }
       function log(text, cls) {
         var d = document.createElement('div');
-        d.className = cls || '';
+        d.className = 'll' + (cls ? ' ' + cls : ''); // 'll' marks a log line
         d.textContent = text;
         var box = el('log');
         box.appendChild(d);
         box.scrollTop = box.scrollHeight;
-        while (box.childNodes.length > 120) box.removeChild(box.firstChild);
+        // Cap the number of log lines (leaving the stats overlay untouched).
+        var lines = box.getElementsByClassName('ll');
+        while (lines.length > 120) box.removeChild(lines[0]);
       }
 
       function floorMultiplier(f) { return 1 + FLOOR_GROWTH * (f - 1); }
 
+      // POWER stats grow multiplicatively with the floor. Ratings/ratios instead
+      // get a small ADDITIVE increment per level (FLAT_GROWTH) — multiplying a
+      // to-hit rating or a 150% crit multiplier by the floor factor makes them
+      // balloon (and crit damage would double-dip with the raw damage that
+      // already scales). value = base + growth * (level - 1).
+      var SCALING_STATS = ['hp', 'patt', 'matt', 'pdef', 'mdef', 'speed', 'dodge'];
+      var FLAT_STATS = ['acc', 'critRate', 'critDmg', 'luck'];
+      var FLAT_GROWTH = { acc: 1, critRate: 0.2, critDmg: 1, luck: 0 }; // per level
       function makeEnemy(archetype, f) {
         var m = floorMultiplier(f);
         var e = { name: archetype.name, level: f };
-        ['hp', 'patt', 'matt', 'pdef', 'mdef', 'speed', 'acc', 'dodge', 'critRate', 'critDmg', 'luck'].forEach(
-          function (k) { e[k] = Math.round((archetype[k] || 0) * m); }
-        );
+        SCALING_STATS.forEach(function (k) { e[k] = Math.round((archetype[k] || 0) * m); });
+        FLAT_STATS.forEach(function (k) {
+          var val = (archetype[k] || 0) + (FLAT_GROWTH[k] || 0) * (f - 1);
+          e[k] = k === 'critRate' ? Math.round(val * 10) / 10 : Math.round(val);
+        });
         e.maxhp = e.hp;
         return e;
       }
@@ -173,10 +213,15 @@
         var def = (physical ? defender.pdef : defender.mdef) * (1 - (defPen || 0));
         if (def < 0) def = 0;
         var dmg = raw * (50 / (def + 50));
-        var crit = Math.random() * 100 < attacker.critRate;
-        if (crit) dmg *= attacker.critDmg / 100;
+        // Multi-crit: every full 100% crit rate is a guaranteed crit, and the
+        // remainder is the chance of one more. Each crit multiplies by CritDmg,
+        // so N crits = dmg * (critDmg/100)^N.
+        var cr = attacker.critRate || 0;
+        var crits = Math.floor(cr / 100);
+        if (Math.random() * 100 < cr % 100) crits += 1;
+        if (crits > 0) dmg *= Math.pow(attacker.critDmg / 100, crits);
         dmg = Math.max(1, Math.round(dmg));
-        return { dmg: dmg, crit: crit, physical: physical };
+        return { dmg: dmg, crits: crits, physical: physical };
       }
 
       // ---- Flow -------------------------------------------------------------
@@ -271,9 +316,10 @@
         } else {
           defender.hp = Math.max(0, defender.hp - r.dmg);
           var arrow = playerTurn ? 'You hit ' + combat.enemy.name : combat.enemy.name + ' hits you';
+          var critTag = r.crits > 0 ? ' (CRIT' + (r.crits > 1 ? ' x' + r.crits : '') + '!)' : '';
           log(
-            arrow + ' for ' + r.dmg + (r.crit ? ' (CRIT!)' : '') + (r.physical ? '' : ' [magic]'),
-            r.crit ? 'is-crit' : playerTurn ? 'is-hit' : 'is-bad'
+            arrow + ' for ' + r.dmg + critTag + (r.physical ? '' : ' [magic]'),
+            r.crits > 0 ? 'is-crit' : playerTurn ? 'is-hit' : 'is-bad'
           );
         }
 
@@ -343,6 +389,43 @@
           el('ehp').innerHTML = '&nbsp;';
           el('ebar').style.width = '0%';
         }
+        renderStatsPanel();
+      }
+
+      // Player-vs-enemy stat comparison, shown over the log when toggled.
+      function renderStatsPanel() {
+        var box = el('statspanel');
+        if (!box || !box.classList.contains('show') || !player) return;
+        var e = combat && combat.enemy;
+        var rows = [
+          ['head', '', 'You', e ? e.name + ' (Lv ' + e.level + ')' : '(no enemy)'],
+          ['', 'HP', Math.ceil(player.hp) + '/' + player.maxhp, e ? Math.ceil(e.hp) + '/' + e.maxhp : '-'],
+          ['', 'P.Att', player.patt, e ? e.patt : '-'],
+          ['', 'M.Att', player.matt, e ? e.matt : '-'],
+          ['', 'P.Def', player.pdef, e ? e.pdef : '-'],
+          ['', 'M.Def', player.mdef, e ? e.mdef : '-'],
+          ['', 'Speed', player.speed, e ? e.speed : '-'],
+          ['', 'Acc', player.acc, e ? e.acc : '-'],
+          ['', 'Dodge', player.dodge, e ? e.dodge : '-'],
+          ['', 'Crit%', player.critRate + '%', e ? e.critRate + '%' : '-'],
+          ['', 'CritDmg', player.critDmg + '%', e ? e.critDmg + '%' : '-'],
+          ['', 'Luck', player.luck, e ? e.luck : '-'],
+        ];
+        var html = '<div class="sp-title">STATS</div>';
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i];
+          html +=
+            '<div class="sp-row ' + r[0] + '"><span class="sp-l">' + r[1] +
+            '</span><span class="sp-p">' + r[2] + '</span><span class="sp-e">' + r[3] + '</span></div>';
+        }
+        box.innerHTML = html;
+      }
+
+      function toggleStatsPanel() {
+        var box = el('statspanel');
+        var open = box.classList.toggle('show');
+        el('statsbtn').textContent = open ? 'Hide Stats' : 'Stats';
+        if (open) renderStatsPanel();
       }
 
       // ---- Boot -------------------------------------------------------------
@@ -397,7 +480,7 @@
         var f = statFields(stats);
         player.patt = f.patt; player.matt = f.matt;
         player.pdef = f.pdef; player.mdef = f.mdef;
-        player.speed = f.speed; player.acc = f.acc;
+        player.speed = f.speed; player.acc = f.acc; player.dodge = f.dodge;
         player.critRate = f.critRate; player.critDmg = f.critDmg; player.luck = f.luck;
         player.maxhp = f.maxhp;
         if (player.hp > player.maxhp) player.hp = player.maxhp;
@@ -443,6 +526,7 @@
         else if (type === 'stats') receiveUpdate(payload);
       });
 
+      el('statsbtn').addEventListener('click', toggleStatsPanel);
       el('restart').addEventListener('click', function () {
         log('Restarting from Floor 1...', 'is-info');
         startFloor(1);

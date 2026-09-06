@@ -21,7 +21,7 @@ export const MINIGAMES = [
     key: 'D',
     entry: 'minigames/dungeon/index.html',
     kind: 'html',
-    size: { w: 540, h: 480 },
+    size: { w: 560, h: 580 },
     desc: 'Auto-battle deeper each floor. Enemies drop gear and XP; die and you restart the floor.',
   },
 ];

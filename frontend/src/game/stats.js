@@ -22,7 +22,7 @@
 // change a formula or constant on one side, update the other:
 //   - P.Def / M.Def mitigation  -> dungeon computeAttack()
 //   - Accuracy / Dodge hit%      -> dungeon hitChance() (and MIN_HIT)
-//   - Crit Damage multiplier     -> dungeon computeAttack()
+//   - Crit rate, multi-crit, Crit Damage -> dungeon computeAttack()
 //   - Luck -> loot rarity         -> game/items.js rollRarity() (LUCK_K, RARITIES)
 
 /** Ordered stat list. `aliases[0]` is the canonical command key. @type {StatDef[]} */
@@ -76,12 +76,18 @@ export const STAT_DEFS = [
   {
     id: 'critRate', name: 'Crit Rate', abbr: 'Crit%', aliases: ['crit.rate', 'critrate', 'cr'],
     base: 5, perPoint: 0.5, fmt: 'pct',
-    help: ['Chance for an attack to critically hit.'],
+    help: [
+      'Chance to land a critical hit.',
+      'Above 100% it always crits and rolls the remainder for an extra crit — e.g. 120% = one guaranteed crit + a 20% chance of a second (multi-crit).',
+    ],
   },
   {
     id: 'critDmg', name: 'Crit Damage', abbr: 'CritDmg', aliases: ['crit.dmg', 'critdmg', 'cd'],
     base: 150, perPoint: 5, fmt: 'pct',
-    help: ['Damage multiplier on a critical hit (150% = 1.5x damage).'],
+    help: [
+      'Damage multiplier per critical hit (150% = 1.5x).',
+      'Multiple crits stack multiplicatively: two crits = raw x 1.5 x 1.5.',
+    ],
   },
   {
     id: 'luck', name: 'Luck', abbr: 'Luck', aliases: ['luck', 'lck'],
