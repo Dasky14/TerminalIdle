@@ -1,14 +1,14 @@
-// Weapon upgrades.
+// Equipment upgrades.
 //
-// Only weapons can be upgraded. Each upgrade multiplies the weapon's stats by
-// UPGRADE_STAT_MULT (see game/items.js) and is shown after the name as "+N".
-// The material cost grows exponentially, so there's no hard cap but each level
-// costs meaningfully more than the last:
+// Any piece of gear (weapon OR armour) can be upgraded. Each upgrade multiplies
+// the item's stats by UPGRADE_STAT_MULT (see game/items.js) and is shown after
+// the name as "+N". The material cost grows exponentially, so there's no hard
+// cap but each level costs meaningfully more than the last:
 //   materials(L -> L+1) = round(UPGRADE_BASE_COST * UPGRADE_COST_GROWTH^L)
-// The material is orientation-matched: physical weapons cost SCRAP, magical
-// weapons cost ESSENCE (see game/salvage.js for where those come from).
+// The material is orientation-matched: physical gear costs SCRAP, magical gear
+// costs ESSENCE (see game/salvage.js for where those come from).
 //
-// Legendary weapons additionally consume DUPLICATES of themselves: +1 needs 1
+// Legendary gear additionally consumes DUPLICATES of itself: +1 needs 1
 // duplicate, +1->+2 needs 2, +2->+3 needs 3, and so on (level L -> L+1 needs
 // L+1). Duplicates are other inventory items with the same base legendary key.
 //
@@ -24,12 +24,13 @@ import { itemUpgradeLevel } from './items.js';
 export const UPGRADE_COST_GROWTH = 1.5; // material cost multiplier per level
 export const UPGRADE_BASE_COST = 10; // material cost of the first upgrade (0 -> 1)
 
-export function isWeapon(item) {
-  return !!item && item.slot === 'weapon';
+/** Any equipment item (has an equip slot) can be upgraded. */
+export function isUpgradeable(item) {
+  return !!item && !!item.slot;
 }
 
-/** 'physical' (scrap) or 'magical' (essence), from the weapon's base stats. */
-export function weaponOrientation(item) {
+/** 'physical' (scrap) or 'magical' (essence), from the item's base stats. */
+export function itemOrientation(item) {
   const s = (item && item.stats) || {};
   const phys = (s.patt || 0) + (s.pdef || 0);
   const mag = (s.matt || 0) + (s.mdef || 0);
@@ -37,7 +38,7 @@ export function weaponOrientation(item) {
 }
 
 export function upgradeResource(item) {
-  return weaponOrientation(item) === 'magical' ? 'essence' : 'scrap';
+  return itemOrientation(item) === 'magical' ? 'essence' : 'scrap';
 }
 
 /** The cost to take an item from its current level to the next. */
@@ -65,9 +66,9 @@ export function countDuplicates(item) {
     .reduce((n, e) => n + e.qty, 0);
 }
 
-/** Can this weapon be upgraded right now? Returns { ok, cost, error? }. */
+/** Can this item be upgraded right now? Returns { ok, cost, error? }. */
 export function canUpgrade(item) {
-  if (!isWeapon(item)) return { ok: false, error: 'only weapons can be upgraded' };
+  if (!isUpgradeable(item)) return { ok: false, error: 'this item cannot be upgraded' };
   const cost = upgradeCost(item);
   const have = getResource(cost.resource);
   if (have < cost.amount) {
@@ -101,12 +102,12 @@ function consumeDuplicates(item, n) {
 }
 
 /**
- * Upgrade a weapon one level, spending materials (and legendary duplicates).
+ * Upgrade a gear item one level, spending materials (and legendary duplicates).
  * Mutates the item in place, so it works whether the item is equipped or in the
  * inventory (both hold the same object reference).
  * @returns {{ok:true, level:number, cost:object} | {ok:false, error:string}}
  */
-export function upgradeWeapon(item) {
+export function upgradeGear(item) {
   const chk = canUpgrade(item);
   if (!chk.ok) return chk;
   const { cost } = chk;

@@ -51,7 +51,7 @@ file from **System → Export / Import** (or the `export` / `import` commands).
   [`leveling.js`](../frontend/src/game/leveling.js)).
 - **`inventory`** items stack by `id`; `name` is display-only. Equipment items
   carry the full item object under `meta` (with `slot`, `stats`, `rarity`, and —
-  for upgraded weapons — an `upgrade` level shown after the name as `+N`).
+  for upgraded gear — an `upgrade` level shown after the name as `+N`).
 - **`resources`** is a flat map; values are clamped at ≥ 0. `scrap` and
   `essence` come from salvaging gear (see [`salvage.js`](../frontend/src/game/salvage.js))
   and are spent on weapon upgrades ([`upgrade.js`](../frontend/src/game/upgrade.js)).

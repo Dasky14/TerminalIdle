@@ -79,7 +79,7 @@ const COMMANDS = [
   { names: ['salvageall'], run: (s, args) => s.salvageAllRarity((args[0] || 'common').toLowerCase()) },
   {
     names: ['upgrade'],
-    usage: 'upgrade <name>       upgrade a weapon (+N) with materials',
+    usage: 'upgrade <name>       upgrade a gear item (+N) with materials',
     run: (s, args, arg) => s.upgradeByName(arg),
   },
   {

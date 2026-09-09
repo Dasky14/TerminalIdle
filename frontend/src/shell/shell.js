@@ -41,7 +41,7 @@ import {
   AUTO_TYPES,
   AUTO_RARITIES,
 } from '../game/salvage.js';
-import { upgradeWeapon } from '../game/upgrade.js';
+import { upgradeGear } from '../game/upgrade.js';
 
 const THEME_KEY = 'til.theme';
 const THEMES = ['green', 'amber', 'blue', 'white'];
@@ -512,14 +512,14 @@ export class Shell {
     this.back();
   }
 
-  /** Upgrade a weapon by uid (from its detail screen). */
+  /** Upgrade a gear item by uid (from its detail screen). */
   upgradeItem(uid) {
     const loc = locateItem(uid);
     if (!loc) {
       this.term('item not found', 'is-error');
       return;
     }
-    const res = upgradeWeapon(loc.item);
+    const res = upgradeGear(loc.item);
     if (!res.ok) {
       this.term(`cannot upgrade: ${res.error}`, 'is-error');
       return;
@@ -599,24 +599,24 @@ export class Shell {
     this.salvageOne(r.item.uid);
   }
 
-  /** `upgrade <name>` — upgrade a weapon (equipped or in inventory) by name. */
+  /** `upgrade <name>` — upgrade a gear item (equipped or in inventory) by name. */
   upgradeByName(query) {
     if (!String(query || '').trim()) {
-      this.term('usage: upgrade <weapon name>', 'is-warn');
+      this.term('usage: upgrade <item name>', 'is-warn');
       return;
     }
-    // Candidates: equipped weapons first (preferred on an exact tie), then inventory.
+    // Candidates: equipped gear first (preferred on an exact tie), then inventory.
     const candidates = [];
     for (const slot of EQUIP_SLOTS) {
       const it = state.equipment[slot];
-      if (it && it.slot === 'weapon') candidates.push(it);
+      if (it) candidates.push(it);
     }
     for (const e of listItems()) {
-      if (e.meta && e.meta.slot === 'weapon') candidates.push(e.meta);
+      if (e.meta && e.meta.slot) candidates.push(e.meta);
     }
     const r = this._resolveItemByName(candidates, query);
     if (r.none) {
-      this.term(`no weapon matching "${query}"`, 'is-error');
+      this.term(`no gear matching "${query}"`, 'is-error');
       return;
     }
     if (r.ambiguous) {

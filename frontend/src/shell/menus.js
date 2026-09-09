@@ -29,7 +29,7 @@ import {
 } from '../game/equipment.js';
 import { describeStats, compareItems, itemEffects, itemDisplayName } from '../game/items.js';
 import { salvageYield, getAutoScrap, AUTO_TYPES, AUTO_RARITIES } from '../game/salvage.js';
-import { isWeapon, upgradeCost, canUpgrade, weaponOrientation, countDuplicates } from '../game/upgrade.js';
+import { isUpgradeable, upgradeCost, canUpgrade, itemOrientation, countDuplicates } from '../game/upgrade.js';
 
 const BACK = { key: 'B', label: 'Back', action: (shell) => shell.back() };
 
@@ -246,14 +246,14 @@ export function buildScreen(id, shell) {
       for (const e of itemEffects(it)) body.push(`Effect: ${e.desc}`);
       const y = salvageYield(it);
       body.push(loc.where === 'equipment' ? `Equipped in ${SLOT_LABELS[loc.slot]}` : 'In your inventory');
-      if (isWeapon(it)) body.push(`Orientation: ${weaponOrientation(it)}  (upgrades cost ${upgradeCost(it).resource})`);
+      if (isUpgradeable(it)) body.push(`Orientation: ${itemOrientation(it)}  (upgrades cost ${upgradeCost(it).resource})`);
       body.push(`Salvage value: +${y.scrap} scrap, +${y.essence} essence`);
 
       const items = [];
       if (loc.where === 'inventory') items.push({ label: 'Equip', action: (s) => s.equipDetail(shell.itemUid) });
       else items.push({ label: 'Unequip', action: (s) => s.unequipSlot(loc.slot) });
 
-      if (isWeapon(it)) {
+      if (isUpgradeable(it)) {
         const cost = upgradeCost(it);
         const chk = canUpgrade(it);
         const dupStr = cost.duplicates ? ` + ${cost.duplicates} dup (have ${countDuplicates(it)})` : '';

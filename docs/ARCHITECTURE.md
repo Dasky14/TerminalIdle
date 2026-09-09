@@ -47,9 +47,10 @@ document explains how the pieces fit together.
   item biased by Luck, then either enter the inventory or are auto-salvaged.
 - **`salvage.js`** — turns gear into `scrap` (physical stats) and `essence`
   (magical stats), and owns the auto-scrap rules.
-- **`upgrade.js`** — weapon upgrades: `+N` levels that multiply the weapon's
-  stats (×1.2/level) for an exponential material cost (×1.5/level), paid in the
-  weapon's orientation resource; legendaries also consume duplicates of themselves.
+- **`upgrade.js`** — gear upgrades (weapons and armour): `+N` levels that
+  multiply the item's stats (×1.2/level) for an exponential material cost
+  (×1.5/level), paid in the item's orientation resource (physical→scrap,
+  magical→essence); legendaries also consume duplicates of themselves.
 - **`save.js`** — the only module that touches `localStorage` or files.
   Autosave is debounced; `exportSave()` downloads JSON; `importSave()` reads a
   file, validates, migrates, and commits. See [SAVE_FORMAT.md](SAVE_FORMAT.md).
