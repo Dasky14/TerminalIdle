@@ -3,36 +3,29 @@
 TerminalIdleProject is a static, client-side game with an optional backend. This
 document explains how the pieces fit together.
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│ Browser (static frontend, Vanilla JS + Vite)                   │
-│                                                                │
-│  ┌───────────────┐   activates    ┌──────────────────────────┐ │
-│  │  Menu shell    │──────────────▶│  Window manager           │ │
-│  │  (shell/)      │  openMinigame  │  (windows/)               │ │
-│  │  keyboard +    │                │  draggable/resizable      │ │
-│  │  mouse nav     │                │  windows, each an <iframe>│ │
-│  └──────┬─────────┘                └───────────┬──────────────┘ │
-│         │ reads/writes                         │ postMessage     │
-│         ▼                                       ▼                │
-│  ┌───────────────┐                     ┌──────────────────────┐ │
-│  │ Game state     │◀───applyReward─────│  Minigame bridge      │ │
-│  │ (game/)        │                    │  (minigames/bridge.js)│ │
-│  │ level/xp,      │                    └──────────┬───────────┘ │
-│  │ inventory,     │                               │             │
-│  │ resources,     │                    ┌──────────▼───────────┐ │
-│  │ per-minigame   │                    │  iframe minigame      │ │
-│  └──────┬─────────┘                    │  HTML (til-sdk.js) or │ │
-│         │ persist                       │  Unity WebGL (jslib)  │ │
-│         ▼                               └──────────────────────┘ │
-│  localStorage  ◀── export/import JSON file                       │
-└───────────────────────────────────────────────────────────────┘
-             │ optional, edit config.json at runtime
-             ▼
-   ┌───────────────────────────┐
-   │ Optional FastAPI backend   │  cloud save / leaderboards / registry (stubs)
-   │ (backend/, python run.py)  │
-   └───────────────────────────┘
+```mermaid
+flowchart TD
+  subgraph Browser["Browser — static frontend (Vanilla JS + Vite)"]
+    direction TB
+    shell["Menu shell (shell/)<br/>keyboard + mouse nav"]
+    wm["Window manager (windows/)<br/>draggable/resizable iframe windows"]
+    bridge["Minigame bridge<br/>(minigames/bridge.js)"]
+    mg["iframe minigame<br/>HTML (til-sdk.js) or Unity WebGL (jslib)"]
+    game["Game state (game/)<br/>level/xp · stats · equipment<br/>inventory · resources · per-minigame<br/>balance + item catalogue"]
+    ls[("localStorage")]
+
+    shell -->|openMinigame| wm
+    shell -->|reads / writes| game
+    wm -->|creates + postMessage| bridge
+    bridge -->|"init / stats / balance"| mg
+    mg -->|"reward / progress"| bridge
+    bridge -->|applyReward| game
+    game -->|persist| ls
+    ls -.->|export / import JSON| game
+  end
+
+  shell -.->|"optional · config.json apiBase at runtime"| backend
+  backend["Optional FastAPI backend<br/>(backend/, python run.py)<br/>cloud save · leaderboards · balance/items overrides (stubs)"]
 ```
 
 ## Modules
