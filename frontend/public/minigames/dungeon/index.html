@@ -200,18 +200,30 @@
         return e;
       }
 
-      // Damage uses the attacker's stronger offense vs the matching defense.
-      // Mitigation follows: damage taken = raw * (1 - def/(def+50)).
-      // Crit multiplies by critDmg/100 (e.g. 150 -> 1.5x).
-      // HELP COUPLING: the '50' mitigation constant and the crit multiplier are
-      // documented in stats.js (P.Def/M.Def and CritDmg `help`). Change both.
+      // Damage of one attack vs the matching defense.
+      //   raw = (physical ? P.Att : M.Att) * mult
+      //   damage taken = raw * (1 - effDef/(effDef+50))
+      //   effDef = baseDef * defender.defenseMult * (1 - defPen)
+      // `mult` is the weapon multiplier (2H 1.3x, dual-wield 0.6x each, else 1).
+      // `defenseMult` is the defender's shield bonus (1.2x with an off-hand).
       // `defPen` (0..1) is defense ignored by the attacker (e.g. Radiant Edge).
+      // Crit multiplies by critDmg/100 (e.g. 150 -> 1.5x), multi-crit stacks.
+      // HELP COUPLING: the '50' mitigation constant, the crit multiplier, and
+      // the weapon/shield multipliers are documented in stats.js (P.Def/M.Def,
+      // CritDmg, P.Att/M.Att help) and docs/LOOT_RULES.md. Change all together.
       // Computes the hit WITHOUT applying it — the caller applies, so effects
       // like Bulwark can intercept first.
-      function computeAttack(attacker, defender, defPen) {
-        var physical = attacker.patt >= attacker.matt;
-        var raw = physical ? attacker.patt : attacker.matt;
-        var def = (physical ? defender.pdef : defender.mdef) * (1 - (defPen || 0));
+      //
+      // opts: { physical, mult, defPen }. When `physical` is omitted the
+      // attacker uses its stronger offense (used by enemies, which have no
+      // weapon); the player passes an explicit type + mult per weapon attack.
+      function computeAttack(attacker, defender, opts) {
+        opts = opts || {};
+        var physical = opts.physical != null ? opts.physical : attacker.patt >= attacker.matt;
+        var mult = opts.mult != null ? opts.mult : 1;
+        var raw = (physical ? attacker.patt : attacker.matt) * mult;
+        var baseDef = physical ? defender.pdef : defender.mdef;
+        var def = baseDef * (defender.defenseMult || 1) * (1 - (opts.defPen || 0));
         if (def < 0) def = 0;
         var dmg = raw * (50 / (def + 50));
         // Multi-crit: every full 100% crit rate is a guaranteed crit, and the
@@ -289,48 +301,65 @@
         return Math.max(MIN_HIT, Math.min(1, attacker.acc / (2 * d)));
       }
 
+      // One tick = one combatant's turn. The player may make several weapon
+      // attacks in a single turn (dual-wield = two); the enemy makes one.
       function tick() {
         if (paused || !combat) return;
-        var playerTurn = combat.activeIsPlayer;
-        var attacker = playerTurn ? player : combat.enemy;
-        var defender = playerTurn ? combat.enemy : player;
+        var wasPlayer = combat.activeIsPlayer;
+        if (wasPlayer) playerAttackTurn();
+        else enemyAttackTurn();
+        if (!combat) return; // fight ended (onEnemyDefeated/onPlayerDeath handled it)
+        combat.activeIsPlayer = !wasPlayer;
+        render();
+      }
 
-        // Accuracy vs Dodge — a miss ends the turn with no damage (and no
-        // Bulwark spent, since nothing landed).
-        if (Math.random() >= hitChance(attacker, defender)) {
-          log(
-            playerTurn ? 'You miss the ' + combat.enemy.name + '.' : combat.enemy.name + ' misses you.',
-            'is-info'
-          );
-          combat.activeIsPlayer = !combat.activeIsPlayer;
-          render();
+      // The player's turn: resolve each weapon attack (1, or 2 when dual-wielding).
+      function playerAttackTurn() {
+        var e = combat.enemy;
+        var atks = player.attacks && player.attacks.length ? player.attacks : [{ type: 'physical', mult: 1 }];
+        var multi = atks.length > 1;
+        for (var i = 0; i < atks.length; i++) {
+          var a = atks[i];
+          var tag = multi ? ' (hit ' + (i + 1) + ')' : '';
+          if (Math.random() >= hitChance(player, e)) {
+            log('You miss the ' + e.name + '.' + tag, 'is-info');
+            continue;
+          }
+          var r = computeAttack(player, e, {
+            physical: a.type === 'physical',
+            mult: a.mult,
+            defPen: effectMap.ignoreDefense || 0, // Radiant Edge
+          });
+          e.hp = Math.max(0, e.hp - r.dmg);
+          var critTag = r.crits > 0 ? ' (CRIT' + (r.crits > 1 ? ' x' + r.crits : '') + '!)' : '';
+          log('You hit ' + e.name + ' for ' + r.dmg + critTag + (r.physical ? '' : ' [magic]') + tag,
+            r.crits > 0 ? 'is-crit' : 'is-hit');
+          if (e.hp <= 0) {
+            onEnemyDefeated();
+            return;
+          }
+        }
+      }
+
+      // The enemy's turn: one attack (enemies have no weapon, so they use their
+      // stronger offense). Bulwark can negate the first hit that would land.
+      function enemyAttackTurn() {
+        var e = combat.enemy;
+        if (Math.random() >= hitChance(e, player)) {
+          log(e.name + ' misses you.', 'is-info');
           return;
         }
-
-        var defPen = playerTurn ? effectMap.ignoreDefense || 0 : 0; // Radiant Edge
-        var r = computeAttack(attacker, defender, defPen);
-
-        // Bulwark: negate the first hit that would land on the player.
-        if (!playerTurn && combat.shieldReady && r.dmg > 0) {
+        var r = computeAttack(e, player, {}); // player.defenseMult applied inside
+        if (combat.shieldReady && r.dmg > 0) {
           combat.shieldReady = false;
           log('Bulwark negates the hit!', 'is-info');
-        } else {
-          defender.hp = Math.max(0, defender.hp - r.dmg);
-          var arrow = playerTurn ? 'You hit ' + combat.enemy.name : combat.enemy.name + ' hits you';
-          var critTag = r.crits > 0 ? ' (CRIT' + (r.crits > 1 ? ' x' + r.crits : '') + '!)' : '';
-          log(
-            arrow + ' for ' + r.dmg + critTag + (r.physical ? '' : ' [magic]'),
-            r.crits > 0 ? 'is-crit' : playerTurn ? 'is-hit' : 'is-bad'
-          );
+          return;
         }
-
-        if (defender.hp <= 0) {
-          if (defender === combat.enemy) onEnemyDefeated();
-          else onPlayerDeath();
-        } else {
-          combat.activeIsPlayer = !combat.activeIsPlayer;
-        }
-        render();
+        player.hp = Math.max(0, player.hp - r.dmg);
+        var critTag = r.crits > 0 ? ' (CRIT' + (r.crits > 1 ? ' x' + r.crits : '') + '!)' : '';
+        log(e.name + ' hits you for ' + r.dmg + critTag + (r.physical ? '' : ' [magic]'),
+          r.crits > 0 ? 'is-crit' : 'is-bad');
+        if (player.hp <= 0) onPlayerDeath();
       }
 
       function onEnemyDefeated() {
@@ -385,27 +414,37 @@
           patt: src.patt, matt: src.matt, pdef: src.pdef, mdef: src.mdef,
           speed: src.speed, acc: src.acc, dodge: src.dodge,
           critRate: src.critRate, critDmg: src.critDmg, luck: src.luck,
+          attacks: src.attacks, defenseMult: src.defenseMult,
         };
       }
 
-      // Resolve one fight to the death, reusing the live combat math. Mutates
-      // p.hp. Returns { died, turns } (turns = seconds the fight consumed).
+      // Resolve one fight to the death, reusing the live combat math (incl. the
+      // player's multi-attack weapon profile). Mutates p.hp. Returns
+      // { died, turns } (turns = seconds the fight consumed).
       function simFight(p, enemy, fx) {
         var playerFirst = fx.alwaysFirst ? true : p.speed >= enemy.speed;
         var activeIsPlayer = playerFirst;
         var shieldReady = !!fx.firstHitShield;
+        var atks = p.attacks && p.attacks.length ? p.attacks : [{ type: 'physical', mult: 1 }];
         var turns = 0;
         var guard = 0;
         while (p.hp > 0 && enemy.hp > 0 && guard < 100000) {
           guard++;
           turns++;
-          var attacker = activeIsPlayer ? p : enemy;
-          var defender = activeIsPlayer ? enemy : p;
-          if (Math.random() < hitChance(attacker, defender)) {
-            var defPen = activeIsPlayer ? (fx.ignoreDefense || 0) : 0;
-            var r = computeAttack(attacker, defender, defPen);
-            if (!activeIsPlayer && shieldReady) shieldReady = false; // Bulwark
-            else defender.hp = Math.max(0, defender.hp - r.dmg);
+          if (activeIsPlayer) {
+            for (var i = 0; i < atks.length; i++) {
+              if (Math.random() < hitChance(p, enemy)) {
+                var r = computeAttack(p, enemy, {
+                  physical: atks[i].type === 'physical', mult: atks[i].mult, defPen: fx.ignoreDefense || 0,
+                });
+                enemy.hp = Math.max(0, enemy.hp - r.dmg);
+                if (enemy.hp <= 0) break;
+              }
+            }
+          } else if (Math.random() < hitChance(enemy, p)) {
+            var r2 = computeAttack(enemy, p, {});
+            if (shieldReady) shieldReady = false; // Bulwark
+            else p.hp = Math.max(0, p.hp - r2.dmg);
           }
           activeIsPlayer = !activeIsPlayer;
         }
@@ -578,22 +617,36 @@
         };
       }
 
-      function buildPlayer(stats) {
+      // The player's weapon combat profile: attacks made per turn + a defense
+      // multiplier (from a shield). Sent by the shell; defaults to a single
+      // unarmed physical attack. See character.js combatProfile / LOOT_RULES.
+      function applyCombat(target, combat) {
+        if (!combat) {
+          if (!target.attacks) { target.attacks = [{ type: 'physical', mult: 1 }]; target.defenseMult = 1; }
+          return;
+        }
+        target.attacks = combat.attacks && combat.attacks.length ? combat.attacks : [{ type: 'physical', mult: 1 }];
+        target.defenseMult = combat.defenseMult || 1;
+      }
+
+      function buildPlayer(stats, combat) {
         var f = statFields(stats);
         f.name = 'You';
         f.hp = f.maxhp;
+        applyCombat(f, combat);
         return f;
       }
 
       // Apply new stats to the existing player WITHOUT healing: a higher max HP
       // just raises the cap; current HP only drops if the new max is lower.
-      function applyPlayerStats(stats) {
+      function applyPlayerStats(stats, combat) {
         var f = statFields(stats);
         player.patt = f.patt; player.matt = f.matt;
         player.pdef = f.pdef; player.mdef = f.mdef;
         player.speed = f.speed; player.acc = f.acc; player.dodge = f.dodge;
         player.critRate = f.critRate; player.critDmg = f.critDmg; player.luck = f.luck;
         player.maxhp = f.maxhp;
+        applyCombat(player, combat);
         if (player.hp > player.maxhp) player.hp = player.maxhp;
       }
 
@@ -608,7 +661,7 @@
 
       function flushUpdate() {
         if (!pending || !player) return;
-        if (pending.stats) applyPlayerStats(pending.stats);
+        if (pending.stats) applyPlayerStats(pending.stats, pending.combat);
         if (pending.effects) setEffects(pending.effects);
         pending = null;
         log(
@@ -620,7 +673,7 @@
       }
 
       TIL.onInit(function (ctx) {
-        player = buildPlayer(ctx.stats);
+        player = buildPlayer(ctx.stats, ctx.combat);
         setEffects(ctx.effects || []);
         startFloorNum = ctx.save && ctx.save.floor ? ctx.save.floor : 1;
         log('You enter the dungeon. (HP ' + player.maxhp + ', P.Att ' + player.patt + ', Speed ' + player.speed + ')', 'is-info');

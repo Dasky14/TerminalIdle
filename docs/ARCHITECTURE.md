@@ -94,8 +94,8 @@ Envelope (both directions): `{ __til: true, dir: 'in'|'out', type, payload }`.
 | game → shell     | `progress`     | Persist a minigame-scoped save slice.             |
 | game → shell     | `requestClose` | Ask the shell to close the window.                |
 | game → shell     | `error`        | Log to shell console.                             |
-| shell → game     | `init`         | `{minigameId, profile:{level}, stats, effects, save, awayMs}`. |
-| shell → game     | `stats`        | `{stats, effects}` — pushed live when they change. |
+| shell → game     | `init`         | `{minigameId, profile:{level}, stats, effects, combat, save, awayMs}`. |
+| shell → game     | `stats`        | `{stats, effects, combat}` — pushed live when they change. |
 | shell → game     | `pause`/`resume`/`shutdown` | Lifecycle signals.                   |
 
 `init.awayMs` is how long the window was closed (capped at 24 h), for idle
@@ -104,10 +104,11 @@ open and on close (stored in `minigameMeta`, separate from the game's own
 `save` slice), and hands back the gap on the next open. The dungeon fast-forwards
 its real combat for that time and banks the result in one batched `reward`.
 
-`stats` is the player's effective combat stats (allocation + equipment) and
-`effects` the active item effects; both are sent at `init` and again (deduped)
-whenever they change, so a running game can react (the dungeon applies them at
-the end of the current fight).
+`stats` is the player's effective combat stats (allocation + equipment),
+`effects` the active item effects, and `combat` the weapon combat profile
+(attacks per turn + defense multiplier — see [LOOT_RULES.md](LOOT_RULES.md)); all
+are sent at `init` and again (deduped) whenever they change, so a running game
+can react (the dungeon applies them at the end of the current fight).
 
 For **Unity WebGL**, `shell → game` is delivered via
 `unityInstance.SendMessage("TILBridge", "OnShellMessage", json)` instead of

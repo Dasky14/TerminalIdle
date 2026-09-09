@@ -28,6 +28,7 @@ import {
   locateItem,
 } from '../game/equipment.js';
 import { describeStats, compareItems, itemEffects, itemDisplayName } from '../game/items.js';
+import { combatProfile } from '../game/character.js';
 import { salvageYield, getAutoScrap, AUTO_TYPES, AUTO_RARITIES } from '../game/salvage.js';
 import { isUpgradeable, upgradeCost, canUpgrade, itemOrientation, countDuplicates } from '../game/upgrade.js';
 
@@ -102,6 +103,13 @@ export function buildScreen(id, shell) {
           );
         }),
       ];
+      // Weapon combat profile: how your equipped weapons attack.
+      const prof = combatProfile();
+      const atkStr = prof.attacks.map((a) => `${a.mult}x ${a.type}`).join(' + ');
+      body.push('', `Attacks  : ${atkStr}  (${prof.label})`);
+      if (prof.defenseMult > 1) {
+        body.push(`Defense  : +${Math.round((prof.defenseMult - 1) * 100)}% from shield`);
+      }
       return {
         title: 'STATS',
         body,

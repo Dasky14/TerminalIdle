@@ -39,12 +39,17 @@ export const LUCK_K = 0.009;
 
 // Base items. `slot` is the equip slot; weapons use slot 'weapon' with `hands`:
 // 1 (one-handed), 2 (two-handed), or 'off' (off-hand, e.g. a shield).
+// Attacking weapons carry `atkType` ('physical' | 'magical') — the damage type
+// they deal, which drives combat (see docs/LOOT_RULES.md and character.js
+// combatProfile). Off-hand items (shields) don't attack, so they have none.
+// Base attack parity: a two-handed weapon's base attack is ~2x a one-handed's
+// (it occupies both weapon slots) — see LOOT_RULES.
 export const BASE_ITEMS = [
-  { key: 'sword', name: 'Sword', slot: 'weapon', hands: 1, base: { patt: 5 } },
-  { key: 'dagger', name: 'Dagger', slot: 'weapon', hands: 1, base: { patt: 3, speed: 2 } },
-  { key: 'wand', name: 'Wand', slot: 'weapon', hands: 1, base: { matt: 5 } },
-  { key: 'greatsword', name: 'Greatsword', slot: 'weapon', hands: 2, base: { patt: 12 } },
-  { key: 'staff', name: 'Staff', slot: 'weapon', hands: 2, base: { matt: 12 } },
+  { key: 'sword', name: 'Sword', slot: 'weapon', hands: 1, atkType: 'physical', base: { patt: 6 } },
+  { key: 'dagger', name: 'Dagger', slot: 'weapon', hands: 1, atkType: 'physical', base: { patt: 4, speed: 2 } },
+  { key: 'wand', name: 'Wand', slot: 'weapon', hands: 1, atkType: 'magical', base: { matt: 6 } },
+  { key: 'greatsword', name: 'Greatsword', slot: 'weapon', hands: 2, atkType: 'physical', base: { patt: 12 } },
+  { key: 'staff', name: 'Staff', slot: 'weapon', hands: 2, atkType: 'magical', base: { matt: 12 } },
   { key: 'shield', name: 'Shield', slot: 'weapon', hands: 'off', base: { pdef: 5, hp: 20 } },
   { key: 'helmet', name: 'Helmet', slot: 'head', base: { pdef: 2, mdef: 2 } },
   { key: 'chestplate', name: 'Chestplate', slot: 'chest', base: { pdef: 4, hp: 30 } },
@@ -90,6 +95,7 @@ export const LEGENDARIES = [
     name: 'Excalibur',
     slot: 'weapon',
     hands: 2,
+    atkType: 'physical',
     stats: { patt: 25, critRate: 10 },
     effects: [{ id: 'ignoreDefense', value: 0.3, desc: 'Radiant Edge — ignores 30% of enemy defense.' }],
   },
@@ -154,17 +160,32 @@ export function rarityChances(luck = 0) {
   return out;
 }
 
-function makeMod(kind) {
-  const statId = randOf(STAT_IDS);
+function makeMod(kind, pool) {
+  const statId = randOf(pool);
   const tier = randInt(3) + 1; // 1..3
   const names = kind === 'prefix' ? PREFIXES : SUFFIXES;
   return { statId, kind, tier, name: names[statId][tier - 1], value: modifierValue(statId, tier) };
 }
 
-function rollMods(rarity) {
-  if (rarity === 'rare') return [makeMod(Math.random() < 0.5 ? 'prefix' : 'suffix')];
-  if (rarity === 'epic') return [makeMod('prefix'), makeMod('suffix')];
+function rollMods(rarity, pool = STAT_IDS) {
+  if (rarity === 'rare') return [makeMod(Math.random() < 0.5 ? 'prefix' : 'suffix', pool)];
+  if (rarity === 'epic') return [makeMod('prefix', pool), makeMod('suffix', pool)];
   return [];
+}
+
+/**
+ * The damage type of an attacking weapon ('physical' | 'magical'), from the
+ * item's `atkType`, falling back to its base definition, then to its stats
+ * (so items saved before atkType existed still resolve). Off-hand shields never
+ * attack; callers shouldn't ask, but this returns 'physical' for safety.
+ */
+export function weaponAtkType(item) {
+  if (!item) return 'physical';
+  if (item.atkType) return item.atkType;
+  const def = BASE_ITEMS.find((b) => b.key === item.base) || LEGENDARIES.find((l) => l.key === item.base);
+  if (def && def.atkType) return def.atkType;
+  const s = (def && (def.base || def.stats)) || item.stats || {};
+  return (s.matt || 0) > (s.patt || 0) ? 'magical' : 'physical';
 }
 
 function mergeStats(base, mods) {
@@ -181,7 +202,7 @@ function buildName(baseName, mods) {
 
 function instantiateLegendary(def) {
   const l = def || randOf(LEGENDARIES);
-  return {
+  const item = {
     uid: newUid(),
     base: l.key,
     name: l.name,
@@ -192,6 +213,8 @@ function instantiateLegendary(def) {
     stats: { ...l.stats },
     effects: (l.effects || []).map((e) => ({ ...e })),
   };
+  if (l.atkType) item.atkType = l.atkType;
+  return item;
 }
 
 /**
@@ -203,8 +226,28 @@ export function generateItem(opts = {}) {
   if (rarity === 'legendary') return instantiateLegendary(opts.legendary);
 
   const base = randOf(BASE_ITEMS);
-  const mods = rollMods(rarity);
-  return {
+  const isWeapon = base.slot === 'weapon';
+  const twoHanded = base.hands === 2;
+
+  // LOOT RULES (see docs/LOOT_RULES.md):
+  //  - A two-handed weapon is single attack-type: it never rolls the OPPOSITE
+  //    attack stat as a modifier (a greatsword won't get M.Att, a staff won't
+  //    get P.Att). One-handed weapons and armour may roll any stat — a 1H may
+  //    carry both P.Att and M.Att, and because each modifier is worth the same,
+  //    splitting across types conserves the total (no dual-type advantage).
+  let pool = STAT_IDS;
+  if (isWeapon && twoHanded) {
+    const forbid = base.atkType === 'physical' ? 'matt' : 'patt';
+    pool = STAT_IDS.filter((id) => id !== forbid);
+  }
+  let mods = rollMods(rarity, pool);
+  //  - A two-handed weapon carries ~2x the "extra stats" of a 1H (it uses both
+  //    weapon slots), so its modifier values are doubled.
+  if (isWeapon && twoHanded) {
+    mods = mods.map((m) => ({ ...m, value: m.value * 2 }));
+  }
+
+  const item = {
     uid: newUid(),
     base: base.key,
     name: buildName(base.name, mods),
@@ -214,6 +257,8 @@ export function generateItem(opts = {}) {
     mods: mods.map((m) => ({ statId: m.statId, kind: m.kind, tier: m.tier, name: m.name, value: m.value })),
     stats: mergeStats(base.base, mods),
   };
+  if (isWeapon && base.atkType) item.atkType = base.atkType;
+  return item;
 }
 
 /**

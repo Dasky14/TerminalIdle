@@ -687,6 +687,10 @@ export class Shell {
     this.term('  common: none · rare: 1 (prefix or suffix) · epic: 2 (both) · legendary: unique');
     this.term('modifier boost = stat perPoint x tier (shown in parentheses).');
     modifierHelpLines().forEach((l) => this.term(l));
+    this.term('weapons:', 'is-warn');
+    this.term('  two-handed weapons roll one attack type only (never both), at DOUBLE');
+    this.term('  the modifier values above — they use both weapon slots.');
+    this.term('  one-handed weapons may roll both P.Att and M.Att (the total is the same).');
   }
 
   /** Prefill the command line with an allocate command for a stat. */

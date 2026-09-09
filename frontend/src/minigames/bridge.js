@@ -16,7 +16,7 @@
 
 import { applyReward } from '../game/rewards.js';
 import { state, emitChange, onChange } from '../game/state.js';
-import { effectiveStats, activeEffects } from '../game/character.js';
+import { effectiveStats, activeEffects, combatProfile } from '../game/character.js';
 
 const TAG = '__til';
 
@@ -91,7 +91,8 @@ export function createBridge({ iframe, minigame, onReward, onRequestClose }) {
         // so it can bank offline progress.
         const stats = effectiveStats();
         const effects = activeEffects();
-        lastStatsJson = JSON.stringify({ stats, effects });
+        const combat = combatProfile();
+        lastStatsJson = JSON.stringify({ stats, effects, combat });
         const m = meta();
         const now = Date.now();
         const awayMs = m.lastOpen ? Math.min(Math.max(0, now - m.lastOpen), MAX_AWAY_MS) : 0;
@@ -100,6 +101,7 @@ export function createBridge({ iframe, minigame, onReward, onRequestClose }) {
           profile: { level: state.profile.level },
           stats,
           effects,
+          combat,
           save: state.minigames[minigame.id] || null,
           awayMs,
         });
@@ -139,11 +141,11 @@ export function createBridge({ iframe, minigame, onReward, onRequestClose }) {
   // apply them (the dungeon applies at the end of the current fight).
   const unsubStats = onChange(() => {
     if (disposed) return;
-    const payload = { stats: effectiveStats(), effects: activeEffects() };
+    const payload = { stats: effectiveStats(), effects: activeEffects(), combat: combatProfile() };
     const json = JSON.stringify(payload);
     if (json !== lastStatsJson) {
       lastStatsJson = json;
-      send('stats', payload); // { stats, effects }
+      send('stats', payload); // { stats, effects, combat }
     }
   });
 

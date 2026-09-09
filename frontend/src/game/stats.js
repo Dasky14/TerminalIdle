@@ -24,6 +24,9 @@
 //   - Accuracy / Dodge hit%      -> dungeon hitChance() (and MIN_HIT)
 //   - Crit rate, multi-crit, Crit Damage -> dungeon computeAttack()
 //   - Luck -> loot rarity         -> game/items.js rollRarity() (LUCK_K, RARITIES)
+//   - P.Att/M.Att attack type & weapon multipliers (2H 1.3x, dual 0.6x each,
+//     shield 1.2x defense) -> character.js combatProfile() + dungeon combat;
+//     the loot side of those rules lives in docs/LOOT_RULES.md.
 
 /** Ordered stat list. `aliases[0]` is the canonical command key. @type {StatDef[]} */
 export const STAT_DEFS = [
@@ -36,12 +39,22 @@ export const STAT_DEFS = [
   {
     id: 'patt', name: 'Physical Attack', abbr: 'P.Att', aliases: ['p.att', 'patt', 'patk'],
     base: 10, perPoint: 2, fmt: 'int',
-    help: ['Physical attack power. An attack uses whichever is higher, P.Att or M.Att, and hits the matching defense.'],
+    help: [
+      'Physical attack power. Used when your equipped weapon is physical (swords,',
+      'daggers, greatswords) and checked against the enemy\'s P.Def.',
+      'Your weapon decides the type and the multiplier: a two-handed weapon hits',
+      'for 1.3x; dual-wielding makes a 0.6x attack with EACH weapon (so a wand +',
+      'dagger does one 0.6x magical and one 0.6x physical hit); a shield adds +20% defense.',
+    ],
   },
   {
     id: 'matt', name: 'Magical Attack', abbr: 'M.Att', aliases: ['m.att', 'matt', 'matk'],
     base: 10, perPoint: 2, fmt: 'int',
-    help: ['Magical attack power. Used instead of P.Att when it is higher, and hits M.Def.'],
+    help: [
+      'Magical attack power. Used when your equipped weapon is magical (wands,',
+      'staves) and checked against the enemy\'s M.Def.',
+      'See P.Att for the weapon multipliers (two-handed 1.3x, dual-wield 0.6x each).',
+    ],
   },
   {
     id: 'pdef', name: 'Physical Defense', abbr: 'P.Def', aliases: ['p.def', 'pdef'],

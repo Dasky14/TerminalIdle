@@ -7,7 +7,7 @@
 import { state, emitChange } from './state.js';
 import { findStat, statValue, STAT_DEFS } from './stats.js';
 import { equipmentBonuses, EQUIP_SLOTS } from './equipment.js';
-import { itemEffects } from './items.js';
+import { itemEffects, weaponAtkType } from './items.js';
 
 /**
  * The player's effective combat stats: allocation value + equipment bonuses,
@@ -21,6 +21,53 @@ export function effectiveStats() {
     out[d.id] = statValue(d, state.stats[d.id] || 0) + (bonuses[d.id] || 0);
   }
   return out;
+}
+
+/**
+ * The player's weapon combat profile: the attacks made per turn and any
+ * defensive multiplier, derived from the equipped weapons. Fed to combat games
+ * (the dungeon) so damage type and per-weapon multipliers depend on the WEAPON,
+ * not on which attack stat is higher. See docs/LOOT_RULES.md.
+ *
+ *   - Two-handed weapon  -> one attack at 1.3x, of the weapon's type.
+ *   - Two one-handed weapons -> one 0.6x attack EACH, of each weapon's type
+ *     (so wand + dagger = one 0.6x magical + one 0.6x physical).
+ *   - One-handed weapon (+ optional shield) -> one 1.0x attack of its type.
+ *   - Off-hand shield -> 1.2x defense multiplier.
+ *   - No weapon -> a single 1.0x physical (unarmed) attack.
+ *
+ * Each attack's raw power uses the player's aggregate stat for its type
+ * (physical -> P.Att, magical -> M.Att) times `mult`.
+ * @returns {{attacks:{type:'physical'|'magical',mult:number}[], defenseMult:number, label:string}}
+ */
+export function combatProfile() {
+  const w1 = state.equipment.weapon1;
+  const w2 = state.equipment.weapon2;
+  let attacks;
+  let defenseMult = 1;
+  let label;
+
+  if (w1 && w1.hands === 2) {
+    attacks = [{ type: weaponAtkType(w1), mult: 1.3 }];
+    label = 'two-handed';
+  } else {
+    const oneH = [];
+    if (w1 && w1.hands === 1) oneH.push(w1);
+    if (w2 && w2.hands === 1) oneH.push(w2);
+    if ((w1 && w1.hands === 'off') || (w2 && w2.hands === 'off')) defenseMult = 1.2;
+
+    if (oneH.length === 2) {
+      attacks = oneH.map((w) => ({ type: weaponAtkType(w), mult: 0.6 }));
+      label = 'dual wield';
+    } else if (oneH.length === 1) {
+      attacks = [{ type: weaponAtkType(oneH[0]), mult: 1 }];
+      label = defenseMult > 1 ? 'one-handed + shield' : 'one-handed';
+    } else {
+      attacks = [{ type: 'physical', mult: 1 }];
+      label = defenseMult > 1 ? 'unarmed + shield' : 'unarmed';
+    }
+  }
+  return { attacks, defenseMult, label };
 }
 
 /**
