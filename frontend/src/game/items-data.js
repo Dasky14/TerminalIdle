@@ -36,33 +36,41 @@ export const DEFAULT_ITEMS = {
     { key: 'greaves', name: 'Greaves', slot: 'legs', stats: { pdef: 3 } },
     { key: 'boots', name: 'Boots', slot: 'feet', stats: { speed: 3 } },
   ],
-  // Modifier names by stat id; index 0/1/2 = tier 1/2/3. The value each grants is
-  // derived in items.js (perPoint x tier), so these are pure naming.
+  // Name modifiers. Each is keyed by an id and defines:
+  //   weight  relative chance of rolling THIS modifier (vs the others in its
+  //           pool) when the item gets a prefix/suffix.
+  //   names   one name per tier; its LENGTH is the modifier's max tier (nothing
+  //           rolls beyond it). Which tier you get is a weighted roll biased to
+  //           low tiers by balance `loot.modifierTierFraction`.
+  //   stats   the stat bonus PER TIER; tier N grants N x these (so a { critRate:
+  //           0.5, critDmg: 1 } modifier at tier 5 gives +2.5% Crit%, +5% CritDmg).
+  // The name must read as a prefix (goes before the item) here / a suffix (after)
+  // in `suffixes`, so the modifier type is clear from the name.
   prefixes: {
-    hp: ['Hearty', 'Robust', 'Titanic'],
-    patt: ['Sharp', 'Keen', 'Brutal'],
-    matt: ['Mystic', 'Arcane', 'Eldritch'],
-    pdef: ['Sturdy', 'Plated', 'Impregnable'],
-    mdef: ['Warded', 'Runed', 'Hallowed'],
-    speed: ['Swift', 'Fleet', 'Blurring'],
-    acc: ['Precise', 'Keeneye', 'Unerring'],
-    dodge: ['Nimble', 'Evasive', 'Ghostly'],
-    critRate: ['Deadly', 'Lethal', 'Murderous'],
-    critDmg: ['Vicious', 'Savage', 'Cataclysmic'],
-    luck: ['Lucky', 'Fortunate', 'Blessed'],
+    hp: { weight: 100, names: ['Hearty', 'Robust', 'Titanic'], stats: { hp: 10 } },
+    patt: { weight: 100, names: ['Sharp', 'Keen', 'Brutal'], stats: { patt: 2 } },
+    matt: { weight: 100, names: ['Mystic', 'Arcane', 'Eldritch'], stats: { matt: 2 } },
+    pdef: { weight: 100, names: ['Sturdy', 'Plated', 'Impregnable'], stats: { pdef: 1 } },
+    mdef: { weight: 100, names: ['Warded', 'Runed', 'Hallowed'], stats: { mdef: 1 } },
+    speed: { weight: 100, names: ['Swift', 'Fleet', 'Blurring'], stats: { speed: 1 } },
+    acc: { weight: 100, names: ['Precise', 'Keeneye', 'Unerring'], stats: { acc: 1 } },
+    dodge: { weight: 100, names: ['Nimble', 'Evasive', 'Ghostly'], stats: { dodge: 0.5 } },
+    critRate: { weight: 100, names: ['Deadly', 'Lethal', 'Murderous'], stats: { critRate: 0.5 } },
+    critDmg: { weight: 100, names: ['Vicious', 'Savage', 'Cataclysmic'], stats: { critDmg: 5 } },
+    luck: { weight: 100, names: ['Lucky', 'Fortunate', 'Blessed'], stats: { luck: 1 } },
   },
   suffixes: {
-    hp: ['of Vigor', 'of Vitality', 'of the Colossus'],
-    patt: ['of Might', 'of Power', 'of Devastation'],
-    matt: ['of Magic', 'of Sorcery', 'of the Archmage'],
-    pdef: ['of Protection', 'of the Bulwark', 'of the Aegis'],
-    mdef: ['of Warding', 'of Spellguard', 'of the Sanctum'],
-    speed: ['of Haste', 'of Alacrity', 'of the Gale'],
-    acc: ['of Aim', 'of Precision', 'of the Hawk'],
-    dodge: ['of Evasion', 'of the Fox', 'of Shadows'],
-    critRate: ['of Striking', 'of the Assassin', 'of Slaughter'],
-    critDmg: ['of Ruin', 'of Carnage', 'of Annihilation'],
-    luck: ['of Luck', 'of Fortune', 'of Destiny'],
+    hp: { weight: 100, names: ['of Vigor', 'of Vitality', 'of the Colossus'], stats: { hp: 10 } },
+    patt: { weight: 100, names: ['of Might', 'of Power', 'of Devastation'], stats: { patt: 2 } },
+    matt: { weight: 100, names: ['of Magic', 'of Sorcery', 'of the Archmage'], stats: { matt: 2 } },
+    pdef: { weight: 100, names: ['of Protection', 'of the Bulwark', 'of the Aegis'], stats: { pdef: 1 } },
+    mdef: { weight: 100, names: ['of Warding', 'of Spellguard', 'of the Sanctum'], stats: { mdef: 1 } },
+    speed: { weight: 100, names: ['of Haste', 'of Alacrity', 'of the Gale'], stats: { speed: 1 } },
+    acc: { weight: 100, names: ['of Aim', 'of Precision', 'of the Hawk'], stats: { acc: 1 } },
+    dodge: { weight: 100, names: ['of Evasion', 'of the Fox', 'of Shadows'], stats: { dodge: 0.5 } },
+    critRate: { weight: 100, names: ['of Striking', 'of the Assassin', 'of Slaughter'], stats: { critRate: 0.5 } },
+    critDmg: { weight: 100, names: ['of Ruin', 'of Carnage', 'of Annihilation'], stats: { critDmg: 5 } },
+    luck: { weight: 100, names: ['of Luck', 'of Fortune', 'of Destiny'], stats: { luck: 1 } },
   },
   // Named legendaries: fixed stats + effects (by id). Add one and it can drop
   // like any other legendary. Keep at least one entry.
@@ -111,16 +119,28 @@ function validBases(arr, def) {
   return ok.length ? ok.map((b) => clone(b)) : def.map((b) => clone(b));
 }
 
-/** Start from the default name tables, overriding a stat's names only with a
- *  full array of >=3 strings — so every stat always has all three tier names. */
-function validNames(over, def) {
-  const out = clone(def);
-  if (isPlainObject(over)) {
-    for (const [k, v] of Object.entries(over)) {
-      if (Array.isArray(v) && v.length >= 3 && v.every((s) => typeof s === 'string')) out[k] = v.slice(0, 3);
-    }
+/** Sanitize one modifier definition, or return null if unusable. */
+function validMod(m) {
+  if (!isPlainObject(m)) return null;
+  const names = Array.isArray(m.names) ? m.names.filter((s) => typeof s === 'string' && s) : [];
+  if (!names.length) return null; // names define the tiers; a modifier needs at least one
+  const stats = {};
+  if (isPlainObject(m.stats)) {
+    for (const [s, v] of Object.entries(m.stats)) if (typeof v === 'number' && Number.isFinite(v)) stats[s] = v;
   }
-  return out;
+  const weight = typeof m.weight === 'number' && Number.isFinite(m.weight) && m.weight > 0 ? m.weight : 100;
+  return { weight, names, stats };
+}
+
+/** Validate a modifier pool (prefixes/suffixes); fall back to default if empty. */
+function validMods(over, def) {
+  if (!isPlainObject(over)) return clone(def);
+  const out = {};
+  for (const [id, m] of Object.entries(over)) {
+    const v = validMod(m);
+    if (v) out[id] = v;
+  }
+  return Object.keys(out).length ? out : clone(def);
 }
 
 function validEffects(over, def) {
@@ -141,8 +161,8 @@ function validate(raw) {
   const b = isPlainObject(raw) ? raw : {};
   return {
     bases: validBases(b.bases, d.bases),
-    prefixes: validNames(b.prefixes, d.prefixes),
-    suffixes: validNames(b.suffixes, d.suffixes),
+    prefixes: validMods(b.prefixes, d.prefixes),
+    suffixes: validMods(b.suffixes, d.suffixes),
     legendaries: validBases(b.legendaries, d.legendaries),
     effects: validEffects(b.effects, d.effects),
   };

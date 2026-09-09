@@ -14,9 +14,15 @@ either to extend the game:
 - **A weapon/armour** — add a `bases` entry: `{ key, name, slot, hands?,
   atkType?, stats:{} }`. Weapons use `slot:"weapon"` with `hands` 1/2/`"off"` and
   need `atkType` (`"physical"`|`"magical"`); armour just needs its slot.
-- **A modifier name** — the `prefixes`/`suffixes` tables map a stat id to its
-  three tier names. The stat *value* a modifier grants is derived
-  (`perPoint × tier`), so these are pure naming.
+- **A modifier** — add an entry to `prefixes`/`suffixes` keyed by an id, with:
+  `weight` (its relative chance of being the one rolled, vs others in that pool),
+  `names` (one name per tier — the array's length is the modifier's max tier,
+  nothing rolls beyond it), and `stats` (the bonus **per tier**; tier N grants
+  N× it, and a modifier may grant several stats at once — e.g. `{ critRate: 0.5,
+  critDmg: 1 }` at tier 5 gives +2.5% Crit%, +5% CritDmg). Which tier you get is
+  a weighted roll biased toward low tiers by `loot.modifierTierFraction` in
+  balance (0.5 → tier weights 100/50/25/…). A prefix name goes before the item
+  and a suffix after, so the name should read accordingly.
 - **A legendary** — add a `legendaries` entry (like a base, plus `effects`).
 
 **Effects** are a registry: `effects` maps an id to `{ desc, value? }`. **Any

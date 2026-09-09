@@ -6,22 +6,22 @@
 //       common = 0, rare = 1 (prefix OR suffix), epic = 2 (prefix AND suffix).
 //   - Legendary: named items with fixed stats and effects.
 //
-// The item CATALOGUE (bases, modifier names, legendaries, effect registry) is
-// DATA and lives in game/items-data.js / public/items.json — edit that to add
+// The item CATALOGUE (bases, modifiers, legendaries, effect registry) is DATA
+// and lives in game/items-data.js / public/items.json — edit that to add
 // weapons/modifiers/legendaries. This module is the LOGIC: rolling, naming, the
-// weapon loot rules, and effect resolution. Drop rates & luck are balance and
-// live in game/balance.js (`loot`).
+// weapon loot rules, and effect resolution. Drop rates, luck, and the tier-roll
+// bias are balance and live in game/balance.js (`loot`).
 //
-// A modifier is tied to one stat and has 3 tiers. Its stat boost is derived, not
-// hard-coded: value = (that stat's perPoint) * tier. So tier 1/2/3 of a luck
-// modifier gives +1/+2/+3, of an HP modifier +10/+20/+30, etc. — matching the
-// allocation scale in stats.js and keeping everything easy to rebalance/graph.
+// A modifier is a weighted, id-keyed entry with a `names` array (one name per
+// tier — its length caps the tier) and a per-tier `stats` block. Rolling it
+// picks a modifier by weight, picks a tier (biased toward low tiers by
+// loot.modifierTierFraction), and grants tier x the stats. So a
+// { critRate: 0.5, critDmg: 1 } modifier at tier 5 gives +2.5% Crit%, +5%
+// CritDmg. See docs/LOOT_RULES.md.
 
 import { STAT_DEFS, formatStat } from './stats.js';
 import { getBalance } from './balance.js';
 import { getItems } from './items-data.js';
-
-const PER_POINT = Object.fromEntries(STAT_DEFS.map((d) => [d.id, d.perPoint]));
 
 // Rarity order, worst -> best (used to lay out the [0,1) roll space). The
 // per-rarity drop weights and the luck warp constant are balance — see
@@ -33,15 +33,45 @@ export const RARITY_TIERS = ['common', 'rare', 'epic', 'legendary'];
 // --- helpers ---------------------------------------------------------------
 const randInt = (n) => Math.floor(Math.random() * n);
 const randOf = (arr) => arr[randInt(arr.length)];
-const STAT_IDS = STAT_DEFS.map((d) => d.id);
 
 function newUid() {
   return `it-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-/** The stat value a modifier grants: perPoint * tier. */
-export function modifierValue(statId, tier) {
-  return (PER_POINT[statId] || 0) * tier;
+/**
+ * Roll a modifier tier in [1, maxTier]. Each successive tier is
+ * `loot.modifierTierFraction` as likely as the previous (0.5 -> weights
+ * 100/50/25/12.5…), normalized over exactly the tiers the modifier defines
+ * (its `names` length). f=0 always rolls tier 1; f>1 biases toward high tiers.
+ */
+function rollTier(maxTier) {
+  const f = Math.max(0, getBalance().loot.modifierTierFraction);
+  const weights = [];
+  let w = 1;
+  for (let t = 0; t < maxTier; t++) {
+    weights.push(w);
+    w *= f;
+  }
+  const total = weights.reduce((a, b) => a + b, 0) || 1;
+  let r = Math.random() * total;
+  for (let t = 0; t < maxTier; t++) {
+    r -= weights[t];
+    if (r < 0) return t + 1;
+  }
+  return maxTier;
+}
+
+/** Weighted pick from [id, def] entries by def.weight (>0). */
+function pickWeighted(entries) {
+  const wt = (d) => (d.weight > 0 ? d.weight : 0);
+  const total = entries.reduce((s, [, d]) => s + wt(d), 0);
+  if (total <= 0) return entries[randInt(entries.length)];
+  let r = Math.random() * total;
+  for (const e of entries) {
+    r -= wt(e[1]);
+    if (r < 0) return e;
+  }
+  return entries[entries.length - 1];
 }
 
 /**
@@ -76,17 +106,36 @@ export function rarityChances(luck = 0) {
   return out;
 }
 
-function makeMod(kind, pool) {
-  const statId = randOf(pool);
-  const tier = randInt(3) + 1; // 1..3
-  const names = kind === 'prefix' ? getItems().prefixes : getItems().suffixes;
-  return { statId, kind, tier, name: names[statId][tier - 1], value: modifierValue(statId, tier) };
+/**
+ * Roll one modifier from a pool ('prefix' | 'suffix'). Picks a modifier by
+ * weight, then a tier by rollTier, and scales the per-tier stats by the tier.
+ * `forbidStat` excludes modifiers that grant that stat (the 2H single-type
+ * rule). Returns null if nothing in the pool is eligible.
+ */
+function makeMod(kind, forbidStat) {
+  const poolMap = kind === 'prefix' ? getItems().prefixes : getItems().suffixes;
+  let entries = Object.entries(poolMap || {});
+  if (forbidStat) entries = entries.filter(([, d]) => !(d.stats && d.stats[forbidStat]));
+  if (!entries.length) return null;
+  const [id, def] = pickWeighted(entries);
+  const tier = rollTier(def.names.length);
+  const stats = {};
+  for (const [s, v] of Object.entries(def.stats || {})) stats[s] = v * tier;
+  return { id, kind, tier, name: def.names[tier - 1], stats };
 }
 
-function rollMods(rarity, pool = STAT_IDS) {
-  if (rarity === 'rare') return [makeMod(Math.random() < 0.5 ? 'prefix' : 'suffix', pool)];
-  if (rarity === 'epic') return [makeMod('prefix', pool), makeMod('suffix', pool)];
-  return [];
+function rollMods(rarity, forbidStat) {
+  const out = [];
+  const add = (kind) => {
+    const m = makeMod(kind, forbidStat);
+    if (m) out.push(m);
+  };
+  if (rarity === 'rare') add(Math.random() < 0.5 ? 'prefix' : 'suffix');
+  else if (rarity === 'epic') {
+    add('prefix');
+    add('suffix');
+  }
+  return out;
 }
 
 /**
@@ -107,7 +156,7 @@ export function weaponAtkType(item) {
 
 function mergeStats(base, mods) {
   const stats = { ...base };
-  for (const m of mods) stats[m.statId] = (stats[m.statId] || 0) + m.value;
+  for (const m of mods) for (const [s, v] of Object.entries(m.stats || {})) stats[s] = (stats[s] || 0) + v;
   return stats;
 }
 
@@ -149,21 +198,19 @@ export function generateItem(opts = {}) {
   const twoHanded = base.hands === 2;
 
   // LOOT RULES (see docs/LOOT_RULES.md):
-  //  - A two-handed weapon is single attack-type: it never rolls the OPPOSITE
-  //    attack stat as a modifier (a greatsword won't get M.Att, a staff won't
-  //    get P.Att). One-handed weapons and armour may roll any stat — a 1H may
-  //    carry both P.Att and M.Att, and because each modifier is worth the same,
-  //    splitting across types conserves the total (no dual-type advantage).
-  let pool = STAT_IDS;
-  if (isWeapon && twoHanded) {
-    const forbid = base.atkType === 'physical' ? 'matt' : 'patt';
-    pool = STAT_IDS.filter((id) => id !== forbid);
-  }
-  let mods = rollMods(rarity, pool);
+  //  - A two-handed weapon is single attack-type: it never rolls a modifier that
+  //    grants the OPPOSITE attack stat (a greatsword won't get M.Att, a staff
+  //    won't get P.Att). One-handed weapons and armour may roll anything.
+  const forbidStat = isWeapon && twoHanded ? (base.atkType === 'physical' ? 'matt' : 'patt') : null;
+  let mods = rollMods(rarity, forbidStat);
   //  - A two-handed weapon carries ~2x the "extra stats" of a 1H (it uses both
-  //    weapon slots), so its modifier values are doubled.
+  //    weapon slots), so every stat its modifiers grant is doubled.
   if (isWeapon && twoHanded) {
-    mods = mods.map((m) => ({ ...m, value: m.value * 2 }));
+    mods = mods.map((m) => {
+      const stats = {};
+      for (const [s, v] of Object.entries(m.stats)) stats[s] = v * 2;
+      return { ...m, stats };
+    });
   }
 
   const item = {
@@ -173,7 +220,7 @@ export function generateItem(opts = {}) {
     slot: base.slot,
     hands: base.hands,
     rarity,
-    mods: mods.map((m) => ({ statId: m.statId, kind: m.kind, tier: m.tier, name: m.name, value: m.value })),
+    mods: mods.map((m) => ({ id: m.id, kind: m.kind, tier: m.tier, name: m.name, stats: { ...m.stats } })),
     stats: mergeStats(base.stats, mods),
   };
   if (isWeapon && base.atkType) item.atkType = base.atkType;
@@ -277,18 +324,25 @@ export function describeStats(item) {
     .join(', ');
 }
 
-/** Lines for `help items`: every modifier, its stat, tiers and names. */
+/** Lines for `help items`: every modifier, its tier names, and per-tier stats. */
 export function modifierHelpLines() {
   const lines = [];
-  const abbr = (id) => STAT_DEFS.find((d) => d.id === id).abbr;
-  const def = (id) => STAT_DEFS.find((d) => d.id === id);
-  const fmtTiers = (id, names) =>
-    names.map((nm, i) => `${nm} (+${formatStat(def(id), modifierValue(id, i + 1))})`).join(' / ');
-
+  const statDef = (id) => STAT_DEFS.find((d) => d.id === id);
+  const perTier = (stats) =>
+    Object.entries(stats || {})
+      .map(([s, v]) => {
+        const d = statDef(s);
+        return d ? `+${formatStat(d, v).replace('%', '')}${d.fmt === 'pct' ? '%' : ''} ${d.abbr}` : `+${v} ${s}`;
+      })
+      .join(', ');
+  const dump = (label, pool) => {
+    lines.push(label);
+    for (const [, m] of Object.entries(pool || {})) {
+      lines.push(`  ${m.names.join(' / ')}  —  ${perTier(m.stats)} per tier`);
+    }
+  };
   const { prefixes, suffixes } = getItems();
-  lines.push('PREFIXES (name goes before the item):');
-  for (const id of STAT_IDS) if (prefixes[id]) lines.push(`  ${(abbr(id) + ':').padEnd(9)}${fmtTiers(id, prefixes[id])}`);
-  lines.push('SUFFIXES (name goes after the item):');
-  for (const id of STAT_IDS) if (suffixes[id]) lines.push(`  ${(abbr(id) + ':').padEnd(9)}${fmtTiers(id, suffixes[id])}`);
+  dump('PREFIXES (before the name; one name per tier):', prefixes);
+  dump('SUFFIXES (after the name; one name per tier):', suffixes);
   return lines;
 }

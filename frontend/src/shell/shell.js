@@ -685,7 +685,7 @@ export class Shell {
   itemsHelp() {
     this.term('items — rarity sets the number of name modifiers:', 'is-warn');
     this.term('  common: none · rare: 1 (prefix or suffix) · epic: 2 (both) · legendary: unique');
-    this.term('modifier boost = stat perPoint x tier (shown in parentheses).');
+    this.term('each modifier rolls a tier; higher tiers are rarer and grant tier x its per-tier stats.');
     modifierHelpLines().forEach((l) => this.term(l));
     this.term('weapons:', 'is-warn');
     this.term('  two-handed weapons roll one attack type only (never both), at DOUBLE');

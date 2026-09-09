@@ -15,6 +15,7 @@
   },
   "loot": {
     "luckK": 0.009,
+    "modifierTierFraction": 0.5,
     "rarities": {
       "common": { "weight": 0.749 },
       "rare": { "weight": 0.2 },

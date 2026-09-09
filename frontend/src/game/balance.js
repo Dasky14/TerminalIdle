@@ -91,6 +91,10 @@ export const DEFAULT_BALANCE = {
   // public/items.json.
   loot: {
     luckK: 0.009,
+    // When a modifier rolls its tier, each successive tier is this fraction as
+    // likely as the previous (0.5 -> tier weights 100/50/25/12.5…), across the
+    // tiers that modifier defines (its `names` length caps it). See items.js.
+    modifierTierFraction: 0.5,
     rarities: {
       common: { weight: 0.749 },
       rare: { weight: 0.2 },
@@ -206,6 +210,7 @@ function validate(raw) {
     },
     loot: {
       luckK: num(Lo.luckK, d.loot.luckK, { min: 0 }),
+      modifierTierFraction: num(Lo.modifierTierFraction, d.loot.modifierTierFraction, { min: 0 }),
       rarities: {
         common: rw('common'),
         rare: rw('rare'),

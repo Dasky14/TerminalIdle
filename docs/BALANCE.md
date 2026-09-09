@@ -52,7 +52,7 @@ untrusted input — never as code.
 | `upgrade` | `statMult`, `costGrowth`, `baseCost` | `items.js` (`itemStatMult`), `upgrade.js` |
 | `salvage` | `rarityBase` yield per rarity | `salvage.js` |
 | `combat` | weapon mults (`twoHandMult`,`dualWieldMult`,`shieldDefMult`); dungeon tuning (`mitigationK`,`minHit`,`floorGrowth`,`roomsPerFloor`,`turnMs`,`chestChance`,`enemyDropChance`,`xpPerEnemy`,`xpPerBoss`,`flatGrowth`); `enemies`/`bosses` tables | `character.js` `combatProfile`; the dungeon iframe |
-| `loot` | rarity drop weights + luck warp (`luckK`) | `items.js` `rollRarity`/`rarityChances` |
+| `loot` | rarity drop weights, luck warp (`luckK`), modifier tier bias (`modifierTierFraction`) | `items.js` `rollRarity`/`rarityChances`/`rollTier` |
 
 Not yet externalized (natural next candidate, same pattern): per-stat `base`/
 `perPoint` growth (`stats.js` `STAT_DEFS`).
