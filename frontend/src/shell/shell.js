@@ -712,13 +712,17 @@ export class Shell {
     }
   }
 
+  /** Ask for confirmation before wiping the save (menu-driven, no native dialog). */
   confirmReset() {
-    const ok = window.confirm('Reset your save? This erases all local progress.');
-    if (ok) {
-      resetSave();
-      this.term('save reset', 'is-ok');
-      this.goRoot();
-    }
+    this.navigate('reset-confirm');
+    this.term("reset: choose 'Yes' to wipe, or type 'reset confirm' to skip this prompt", 'is-warn');
+  }
+
+  /** Actually wipe the save and return to a fresh game. */
+  doReset() {
+    resetSave();
+    this.term('save reset — fresh game started', 'is-ok');
+    this.goRoot();
   }
 
   /** Set the colour theme by name, or report the valid options. */

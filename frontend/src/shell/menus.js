@@ -357,6 +357,20 @@ export function buildScreen(id, shell) {
         ],
       };
 
+    case 'reset-confirm':
+      return {
+        title: 'RESET SAVE',
+        body: [
+          'This erases ALL local progress: level, stats, equipment, inventory,',
+          'resources, and minigame progress. This cannot be undone.',
+          '(tip: System -> Export save first if you want a backup.)',
+        ],
+        items: [
+          { label: 'Yes — erase everything', action: (s) => s.doReset() },
+          { label: 'Cancel', action: (s) => s.back() },
+        ],
+      };
+
     case 'settings':
       return {
         title: 'SETTING COMMANDS',

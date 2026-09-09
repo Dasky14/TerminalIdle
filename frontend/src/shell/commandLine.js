@@ -128,7 +128,11 @@ const COMMANDS = [
     run: (s, args, arg) => (arg ? s.setLogLines(arg) : s.logLinesUsage()),
   },
   { names: ['ping'], usage: 'ping                 check the configured backend', run: (s) => s.pingBackend() },
-  { names: ['reset'], usage: 'reset                wipe local save', run: (s) => s.confirmReset() },
+  {
+    names: ['reset'],
+    usage: 'reset [confirm]      wipe local save (asks first; "reset confirm" skips)',
+    run: (s, args) => (['confirm', 'yes', 'y', '-y'].includes((args[0] || '').toLowerCase()) ? s.doReset() : s.confirmReset()),
+  },
 ];
 
 // name -> command entry (built once).
