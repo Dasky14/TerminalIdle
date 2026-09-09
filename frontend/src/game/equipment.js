@@ -11,7 +11,7 @@
 
 import { state, emitChange } from './state.js';
 import { addItem, removeItem, listItems } from './inventory.js';
-import { compareItems } from './items.js';
+import { compareItems, effectiveItemStats } from './items.js';
 
 export const ARMOUR_SLOTS = ['head', 'chest', 'hands', 'legs', 'feet'];
 export const WEAPON_SLOTS = ['weapon1', 'weapon2'];
@@ -164,13 +164,27 @@ export function unequip(slot) {
   return it;
 }
 
-/** Sum of stat bonuses from every equipped item: { statId: total }. */
+/** Sum of stat bonuses from every equipped item (post-upgrade): { statId: total }. */
 export function equipmentBonuses() {
   const out = {};
   for (const slot of EQUIP_SLOTS) {
     const it = state.equipment[slot];
-    if (!it || !it.stats) continue;
-    for (const [k, v] of Object.entries(it.stats)) out[k] = (out[k] || 0) + v;
+    if (!it) continue;
+    for (const [k, v] of Object.entries(effectiveItemStats(it))) out[k] = (out[k] || 0) + v;
   }
   return out;
+}
+
+/**
+ * Find an item by uid, whether equipped or in the inventory.
+ * @returns {{item:object, where:'equipment'|'inventory', slot?:string}|null}
+ */
+export function locateItem(uid) {
+  for (const slot of EQUIP_SLOTS) {
+    const it = state.equipment[slot];
+    if (it && it.uid === uid) return { item: it, where: 'equipment', slot };
+  }
+  const entry = listItems().find((e) => e.meta && e.meta.uid === uid);
+  if (entry) return { item: entry.meta, where: 'inventory' };
+  return null;
 }

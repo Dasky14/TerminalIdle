@@ -25,11 +25,23 @@ import {
   equipInSlotByUid,
   unequip,
   findEquippableByName,
+  locateItem,
   EQUIP_SLOTS,
   SLOT_LABELS,
 } from '../game/equipment.js';
-import { modifierHelpLines, rarityChances } from '../game/items.js';
+import { modifierHelpLines, rarityChances, itemDisplayName } from '../game/items.js';
 import { effectiveStats } from '../game/character.js';
+import { listItems } from '../game/inventory.js';
+import {
+  salvageItem,
+  salvageAll,
+  toggleAutoScrap,
+  setAutoScrap,
+  getAutoScrap,
+  AUTO_TYPES,
+  AUTO_RARITIES,
+} from '../game/salvage.js';
+import { upgradeWeapon } from '../game/upgrade.js';
 
 const THEME_KEY = 'til.theme';
 const THEMES = ['green', 'amber', 'blue', 'white'];
@@ -94,6 +106,10 @@ export class Shell {
           'equip-slot',
           'inventory',
           'inventory-cat',
+          'item-detail',
+          'salvage',
+          'autoscrap',
+          'autoscrap-type',
           'resources',
           'system',
         ].includes(this.currentId)
@@ -476,6 +492,193 @@ export class Shell {
     }
     const it = unequip(slot);
     this.term(it ? `unequipped ${it.name} (${SLOT_LABELS[slot]})` : `${SLOT_LABELS[slot]} is empty`, it ? 'is-ok' : 'is-warn');
+  }
+
+  // --- Item detail / salvage / upgrade ------------------------------------
+  /** Open the detail screen for an item (equipped or in inventory) by uid. */
+  openItem(uid) {
+    this.itemUid = uid;
+    this.navigate('item-detail');
+  }
+
+  /** Equip an inventory item from its detail screen, then step back. */
+  equipDetail(uid) {
+    const it = equipByUid(uid);
+    if (!it) {
+      this.term('item not found', 'is-error');
+      return;
+    }
+    this.term(`equipped ${itemDisplayName(it)}`, 'is-ok');
+    this.back();
+  }
+
+  /** Upgrade a weapon by uid (from its detail screen). */
+  upgradeItem(uid) {
+    const loc = locateItem(uid);
+    if (!loc) {
+      this.term('item not found', 'is-error');
+      return;
+    }
+    const res = upgradeWeapon(loc.item);
+    if (!res.ok) {
+      this.term(`cannot upgrade: ${res.error}`, 'is-error');
+      return;
+    }
+    const dup = res.cost.duplicates ? ` + ${res.cost.duplicates} duplicate(s)` : '';
+    this.term(`upgraded ${loc.item.name} to +${res.level}  (-${res.cost.amount} ${res.cost.resource}${dup})`, 'is-ok');
+  }
+
+  /** Salvage one inventory item by uid, then step back to the list. */
+  salvageOne(uid) {
+    const res = salvageItem(uid);
+    if (!res) {
+      this.term('item not found in inventory', 'is-error');
+      return;
+    }
+    this.term(`salvaged ${itemDisplayName(res.item)} -> +${res.yield.scrap} scrap, +${res.yield.essence} essence`, 'is-ok');
+    this.back();
+  }
+
+  /** Bulk-salvage a rarity (or 'all') of inventory gear. */
+  salvageAllRarity(rarity) {
+    const valid = [...AUTO_RARITIES, 'all'];
+    if (!valid.includes(rarity)) {
+      this.term(`unknown rarity: ${rarity}  (${valid.join(', ')})`, 'is-error');
+      return;
+    }
+    const r = salvageAll(rarity);
+    const kept = r.skipped ? ` (kept ${r.skipped} upgraded)` : '';
+    if (!r.count) {
+      this.term(`no ${rarity === 'all' ? '' : rarity + ' '}gear to salvage${kept}`, 'is-warn');
+      return;
+    }
+    this.term(`salvaged ${r.count} item(s) -> +${r.scrap} scrap, +${r.essence} essence${kept}`, 'is-ok');
+  }
+
+  /**
+   * Resolve a typed name against a list of candidate items, tab-completion
+   * style: a partial that matches exactly one item resolves to it; an exact
+   * full-name match always resolves (even if a longer name also contains it);
+   * a partial matching several is ambiguous. `by name` uses case-insensitive
+   * substring matching.
+   * @returns {{item:object} | {ambiguous:object[]} | {none:true}}
+   */
+  _resolveItemByName(candidates, query) {
+    const q = String(query || '').toLowerCase().trim();
+    const matches = candidates.filter((it) => it.name.toLowerCase().includes(q));
+    if (matches.length === 0) return { none: true };
+    if (matches.length === 1) return { item: matches[0] };
+    const exact = matches.filter((it) => it.name.toLowerCase() === q);
+    if (exact.length) return { item: exact[0] };
+    return { ambiguous: matches };
+  }
+
+  /** Print an "ambiguous — type the full name" list for a resolve result. */
+  _printAmbiguous(verb, matches) {
+    const names = [...new Set(matches.map((it) => `[${it.rarity}] ${itemDisplayName(it)}`))];
+    this.term(`"${verb}" matches ${names.length} items — type the full name:`, 'is-warn');
+    for (const n of names) this.term('  ' + n);
+  }
+
+  /** `salvage <name>` — salvage an inventory gear item by (unambiguous) name. */
+  salvageByName(query) {
+    if (!query) {
+      this.term('usage: salvage <item name>   (or: salvage all <rarity>)', 'is-warn');
+      return;
+    }
+    const gear = listItems().filter((e) => e.meta && e.meta.slot).map((e) => e.meta);
+    const r = this._resolveItemByName(gear, query);
+    if (r.none) {
+      this.term(`no inventory gear matching "${query}"`, 'is-error');
+      return;
+    }
+    if (r.ambiguous) {
+      this._printAmbiguous('salvage', r.ambiguous);
+      return;
+    }
+    this.salvageOne(r.item.uid);
+  }
+
+  /** `upgrade <name>` — upgrade a weapon (equipped or in inventory) by name. */
+  upgradeByName(query) {
+    if (!String(query || '').trim()) {
+      this.term('usage: upgrade <weapon name>', 'is-warn');
+      return;
+    }
+    // Candidates: equipped weapons first (preferred on an exact tie), then inventory.
+    const candidates = [];
+    for (const slot of EQUIP_SLOTS) {
+      const it = state.equipment[slot];
+      if (it && it.slot === 'weapon') candidates.push(it);
+    }
+    for (const e of listItems()) {
+      if (e.meta && e.meta.slot === 'weapon') candidates.push(e.meta);
+    }
+    const r = this._resolveItemByName(candidates, query);
+    if (r.none) {
+      this.term(`no weapon matching "${query}"`, 'is-error');
+      return;
+    }
+    if (r.ambiguous) {
+      this._printAmbiguous('upgrade', r.ambiguous);
+      return;
+    }
+    this.upgradeItem(r.item.uid);
+  }
+
+  // --- Auto-scrap ----------------------------------------------------------
+  openAutoScrapType(type) {
+    this.autoType = type;
+    this.navigate('autoscrap-type');
+  }
+
+  toggleAutoScrapRarity(type, rarity) {
+    toggleAutoScrap(type, rarity);
+    this.render(false);
+  }
+
+  clearAutoScrapType(type) {
+    setAutoScrap(type, []);
+    this.term(`cleared auto-scrap for ${type}`, 'is-ok');
+    this.render(false);
+  }
+
+  /** `autoscrap [<type> <rarities|none|all>]` — show or set rules. */
+  autoScrapCmd(args) {
+    if (!args.length) {
+      const c = getAutoScrap();
+      this.term('auto-scrap rules (salvage matching drops on pickup):', 'is-warn');
+      this.term(`  all: ${c.all.length ? c.all.join(',') : 'none'}`);
+      for (const t of AUTO_TYPES) {
+        if (t !== 'all' && c.byType[t]) this.term(`  ${t}: ${c.byType[t].join(',') || 'none'}`);
+      }
+      this.term('set:  autoscrap <type> <rarities>   (e.g. autoscrap all common,rare)');
+      this.term(`types: ${AUTO_TYPES.join(', ')}   rarities: ${AUTO_RARITIES.join(', ')}, all, none`);
+      return;
+    }
+    const type = args[0].toLowerCase();
+    if (!AUTO_TYPES.includes(type)) {
+      this.term(`unknown type: ${type}  (${AUTO_TYPES.join(', ')})`, 'is-error');
+      return;
+    }
+    const rest = args.slice(1).join(' ').toLowerCase().trim();
+    if (!rest) {
+      this.term(`usage: autoscrap ${type} <rarities|all|none>`, 'is-warn');
+      return;
+    }
+    let rarities;
+    if (rest === 'none' || rest === 'off') rarities = [];
+    else if (rest === 'all') rarities = AUTO_RARITIES.slice();
+    else {
+      rarities = rest.split(/[,\s]+/).filter(Boolean);
+      const bad = rarities.filter((r) => !AUTO_RARITIES.includes(r));
+      if (bad.length) {
+        this.term(`unknown rarity: ${bad.join(', ')}  (${AUTO_RARITIES.join(', ')})`, 'is-error');
+        return;
+      }
+    }
+    setAutoScrap(type, rarities);
+    this.term(`auto-scrap ${type}: ${rarities.length ? rarities.join(',') : 'none'}`, 'is-ok');
   }
 
   /** `help items` — the modifier catalogue (stat, tiers, names). */

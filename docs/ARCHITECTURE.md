@@ -43,7 +43,13 @@ document explains how the pieces fit together.
 - **`leveling.js` / `inventory.js` / `resources.js`** — typed helpers that own
   their slice of state.
 - **`rewards.js`** — `applyReward({xp, resources, items})` fans a minigame reward
-  out to the helpers above.
+  out to the helpers above. Equipment drops (`{roll:'equipment'}`) roll a random
+  item biased by Luck, then either enter the inventory or are auto-salvaged.
+- **`salvage.js`** — turns gear into `scrap` (physical stats) and `essence`
+  (magical stats), and owns the auto-scrap rules.
+- **`upgrade.js`** — weapon upgrades: `+N` levels that multiply the weapon's
+  stats (×1.2/level) for an exponential material cost (×1.5/level), paid in the
+  weapon's orientation resource; legendaries also consume duplicates of themselves.
 - **`save.js`** — the only module that touches `localStorage` or files.
   Autosave is debounced; `exportSave()` downloads JSON; `importSave()` reads a
   file, validates, migrates, and commits. See [SAVE_FORMAT.md](SAVE_FORMAT.md).
@@ -87,9 +93,15 @@ Envelope (both directions): `{ __til: true, dir: 'in'|'out', type, payload }`.
 | game → shell     | `progress`     | Persist a minigame-scoped save slice.             |
 | game → shell     | `requestClose` | Ask the shell to close the window.                |
 | game → shell     | `error`        | Log to shell console.                             |
-| shell → game     | `init`         | `{minigameId, profile:{level}, stats, effects, save}`. |
+| shell → game     | `init`         | `{minigameId, profile:{level}, stats, effects, save, awayMs}`. |
 | shell → game     | `stats`        | `{stats, effects}` — pushed live when they change. |
 | shell → game     | `pause`/`resume`/`shutdown` | Lifecycle signals.                   |
+
+`init.awayMs` is how long the window was closed (capped at 24 h), for idle
+games: the shell stamps a per-minigame `lastOpen` every ~15 s while a window is
+open and on close (stored in `minigameMeta`, separate from the game's own
+`save` slice), and hands back the gap on the next open. The dungeon fast-forwards
+its real combat for that time and banks the result in one batched `reward`.
 
 `stats` is the player's effective combat stats (allocation + equipment) and
 `effects` the active item effects; both are sent at `init` and again (deduped)

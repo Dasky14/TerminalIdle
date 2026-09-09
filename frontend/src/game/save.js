@@ -37,6 +37,15 @@ const MIGRATIONS = {
     version: 3,
     equipment: old.equipment || emptyEquipment(),
   }),
+  // v3 -> v4: introduce salvaging (auto-scrap rules) and idle away-time
+  // tracking (per-minigame lastOpen metadata). Weapon upgrade levels live on
+  // items as `upgrade` and default to 0 with no migration needed.
+  3: (old) => ({
+    ...old,
+    version: 4,
+    autoScrap: old.autoScrap || { all: [], byType: {} },
+    minigameMeta: old.minigameMeta || {},
+  }),
 };
 
 /** Run a (possibly old) save object up to the current SAVE_VERSION. */

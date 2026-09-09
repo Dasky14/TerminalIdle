@@ -29,10 +29,19 @@ async function main() {
       if (summary.levelsGained) {
         parts.push(`LEVEL UP x${summary.levelsGained}! (+${summary.levelsGained * POINTS_PER_LEVEL} pts)`);
       }
-      for (const [k, v] of Object.entries(summary.resources || {})) parts.push(`+${v} ${k}`);
-      for (const it of summary.items || []) {
-        parts.push(it.name ? `got ${it.rarity ? `[${it.rarity}] ` : ''}${it.name}` : `+${it.qty} ${it.id}`);
+      for (const [k, v] of Object.entries(summary.resources || {})) {
+        if (v) parts.push(`+${v} ${k}`);
       }
+      const items = summary.items || [];
+      if (items.length > 6) {
+        // A big batch (e.g. banked idle drops) — collapse to a count.
+        parts.push(`got ${items.length} items`);
+      } else {
+        for (const it of items) {
+          parts.push(it.name ? `got ${it.rarity ? `[${it.rarity}] ` : ''}${it.name}` : `+${it.qty} ${it.id}`);
+        }
+      }
+      if (summary.scrapped) parts.push(`auto-scrapped ${summary.scrapped}`);
       if (parts.length && shell) {
         // Minigame rewards go to the running GAME LOG (middle pane).
         shell.logGame(`[${summary.source}] ${parts.join('  ')}`, 'is-ok');

@@ -6,7 +6,7 @@
 
 import { emptyStats } from './stats.js';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 /** Build a brand-new save/state object. */
 export function createInitialState() {
@@ -33,10 +33,18 @@ export function createInitialState() {
     },
     // Inventory items: { id, name, qty, meta? }
     inventory: [],
-    // Named resource counters: { scrap: 0, credits: 0, ... }
+    // Named resource counters: { scrap: 0, essence: 0, ... }
     resources: {},
+    // Auto-scrap rules: salvage qualifying drops on pickup (see game/salvage.js).
+    // `all` is the fallback rarity list; `byType` overrides it per equip slot
+    // ('weapon' covers every weapon). Empty = auto-scrap nothing.
+    autoScrap: { all: [], byType: {} },
     // Per-minigame persisted slices, keyed by minigame id.
     minigames: {},
+    // Shell-owned per-minigame metadata (kept separate from the game's own
+    // opaque slice above). Currently: { <id>: { lastOpen: epochMs } } for idle
+    // away-time rewards.
+    minigameMeta: {},
     meta: {
       createdAt: now,
       updatedAt: now,

@@ -232,6 +232,48 @@ export function itemEffects(item) {
   return [];
 }
 
+// --- Upgrades --------------------------------------------------------------
+// Weapons can be upgraded (see game/upgrade.js). An upgrade multiplies ALL of
+// the item's stats by UPGRADE_STAT_MULT per level; the level is stored on the
+// item as `upgrade` (missing = 0) and shown after the name as "+N".
+// HELP COUPLING: UPGRADE_STAT_MULT is the stat side of the upgrade economy; the
+// cost side (UPGRADE_COST_GROWTH / UPGRADE_BASE_COST / legendary duplicates)
+// lives in game/upgrade.js. Keep the multiplier here in sync with that module.
+export const UPGRADE_STAT_MULT = 1.2;
+
+/** The upgrade level of an item (0 for un-upgraded or non-weapon items). */
+export function itemUpgradeLevel(item) {
+  return Math.max(0, Math.floor((item && item.upgrade) || 0));
+}
+
+/** The stat multiplier from an item's upgrade level: 1.2^level. */
+export function itemStatMult(item) {
+  return Math.pow(UPGRADE_STAT_MULT, itemUpgradeLevel(item));
+}
+
+/**
+ * An item's stats after its upgrade multiplier, rounded per stat format
+ * (integers for int stats, one decimal for percentages). This is what combat
+ * and the equipment screens should read — `item.stats` is the un-upgraded base.
+ */
+export function effectiveItemStats(item) {
+  const mult = itemStatMult(item);
+  const stats = (item && item.stats) || {};
+  const out = {};
+  for (const [k, v] of Object.entries(stats)) {
+    const def = STAT_DEFS.find((d) => d.id === k);
+    const scaled = v * mult;
+    out[k] = def && def.fmt === 'pct' ? Math.round(scaled * 10) / 10 : Math.round(scaled);
+  }
+  return out;
+}
+
+/** Display name including the "+N" upgrade suffix. */
+export function itemDisplayName(item) {
+  const lvl = itemUpgradeLevel(item);
+  return lvl ? `${item.name} +${lvl}` : item.name;
+}
+
 /** Rarity ordering for sorting (best first). */
 export const RARITY_RANK = { legendary: 0, epic: 1, rare: 2, common: 3 };
 
@@ -243,10 +285,11 @@ export function compareItems(a, b) {
   return a.name.localeCompare(b.name);
 }
 
-/** A compact "+5 P.Att, +2 Speed" summary of an item's stats. */
+/** A compact "+5 P.Att, +2 Speed" summary of an item's stats (post-upgrade). */
 export function describeStats(item) {
-  return STAT_DEFS.filter((d) => item.stats[d.id])
-    .map((d) => `+${formatStat(d, item.stats[d.id]).replace('%', '')}${d.fmt === 'pct' ? '%' : ''} ${d.abbr}`)
+  const eff = effectiveItemStats(item);
+  return STAT_DEFS.filter((d) => eff[d.id])
+    .map((d) => `+${formatStat(d, eff[d.id]).replace('%', '')}${d.fmt === 'pct' ? '%' : ''} ${d.abbr}`)
     .join(', ');
 }
 

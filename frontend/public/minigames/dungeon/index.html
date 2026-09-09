@@ -156,6 +156,7 @@
       var player = null; // { name, hp, maxhp, patt, ... }
       var floor = 1;
       var room = 1;
+      var startFloorNum = 1; // floor to (re)start on; set at init, bumped by idle sim
       var combat = null; // { enemy, activeIsPlayer, isBoss }
       var paused = false;
       var loopTimer = null;
@@ -370,6 +371,116 @@
         }
       }
 
+      // ---- Idle / away-time simulation --------------------------------------
+      // When the window reopens after a gap, we fast-forward the REAL combat
+      // engine (same computeAttack / hitChance / effect hooks) for the elapsed
+      // seconds and bank the result, instead of making the player watch hours of
+      // ticks. One combat turn = one second (TURN_MS), plus ~1s to enter each
+      // room, matching live pacing closely enough for a fair estimate.
+      var AWAY_MIN_SEC = 60; // ignore trivially short absences
+
+      function cloneCombatant(src) {
+        return {
+          name: src.name, hp: src.hp, maxhp: src.maxhp,
+          patt: src.patt, matt: src.matt, pdef: src.pdef, mdef: src.mdef,
+          speed: src.speed, acc: src.acc, dodge: src.dodge,
+          critRate: src.critRate, critDmg: src.critDmg, luck: src.luck,
+        };
+      }
+
+      // Resolve one fight to the death, reusing the live combat math. Mutates
+      // p.hp. Returns { died, turns } (turns = seconds the fight consumed).
+      function simFight(p, enemy, fx) {
+        var playerFirst = fx.alwaysFirst ? true : p.speed >= enemy.speed;
+        var activeIsPlayer = playerFirst;
+        var shieldReady = !!fx.firstHitShield;
+        var turns = 0;
+        var guard = 0;
+        while (p.hp > 0 && enemy.hp > 0 && guard < 100000) {
+          guard++;
+          turns++;
+          var attacker = activeIsPlayer ? p : enemy;
+          var defender = activeIsPlayer ? enemy : p;
+          if (Math.random() < hitChance(attacker, defender)) {
+            var defPen = activeIsPlayer ? (fx.ignoreDefense || 0) : 0;
+            var r = computeAttack(attacker, defender, defPen);
+            if (!activeIsPlayer && shieldReady) shieldReady = false; // Bulwark
+            else defender.hp = Math.max(0, defender.hp - r.dmg);
+          }
+          activeIsPlayer = !activeIsPlayer;
+        }
+        return { died: p.hp <= 0, turns: turns };
+      }
+
+      // Fast-forward `seconds` of dungeon runs from (startFloorNum, room 1).
+      // Returns a summary of banked progress.
+      function simulateAway(seconds) {
+        var p = cloneCombatant(player);
+        p.hp = p.maxhp;
+        var f = startFloorNum;
+        var r = 1;
+        var reached = f;
+        var totalXp = 0;
+        var drops = 0;
+        var deaths = 0;
+        var budget = seconds;
+        while (budget > 0) {
+          budget -= 1; // travel into the room
+          var isBossRoom = r >= ROOMS_PER_FLOOR;
+          if (!isBossRoom && Math.random() < CHEST_CHANCE) {
+            drops += 1 + rand(2);
+            r += 1;
+            if (r > ROOMS_PER_FLOOR) { f += 1; r = 1; p.hp = p.maxhp; if (f > reached) reached = f; }
+            continue;
+          }
+          var enemy = makeEnemy(isBossRoom ? pick(BOSSES) : pick(ENEMIES), f);
+          var fight = simFight(p, enemy, effectMap);
+          budget -= fight.turns;
+          if (fight.died) {
+            deaths += 1;
+            p.hp = p.maxhp;
+            r = 1; // back to the start of the floor
+            continue;
+          }
+          totalXp += Math.round((isBossRoom ? XP_PER_BOSS : XP_PER_ENEMY) * f);
+          if (isBossRoom) drops += 1 + rand(2);
+          else if (Math.random() < ENEMY_DROP_CHANCE) drops += 1;
+          r += 1;
+          if (r > ROOMS_PER_FLOOR) { f += 1; r = 1; p.hp = p.maxhp; }
+          if (f > reached) reached = f;
+        }
+        return { reached: reached, xp: totalXp, drops: drops, deaths: deaths };
+      }
+
+      function fmtDuration(sec) {
+        var h = Math.floor(sec / 3600);
+        var m = Math.floor((sec % 3600) / 60);
+        if (h > 0) return h + 'h ' + m + 'm';
+        if (m > 0) return m + 'm';
+        return sec + 's';
+      }
+
+      // Run the away simulation, bank the results in one batch, and report it.
+      function runAwayReport(awayMs) {
+        var sec = Math.floor((awayMs || 0) / 1000);
+        if (sec < AWAY_MIN_SEC) return;
+        var res = simulateAway(sec);
+        var items = [];
+        for (var i = 0; i < res.drops; i++) items.push({ roll: 'equipment' });
+        if (res.xp > 0 || items.length > 0) {
+          TIL.sendReward({ xp: res.xp, items: items });
+        }
+        startFloorNum = res.reached;
+        TIL.saveProgress({ floor: startFloorNum });
+        log('== Welcome back ==', 'is-boss');
+        log(
+          'Away ' + fmtDuration(sec) + ' — reached Floor ' + res.reached +
+            ', +' + res.xp + ' XP, ' + res.drops + ' item(s)' +
+            (res.deaths ? ', died ' + res.deaths + 'x' : ''),
+          'is-loot'
+        );
+      }
+
       // ---- Render -----------------------------------------------------------
       function pct(cur, max) { return max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0; }
       function render() {
@@ -511,11 +622,14 @@
       TIL.onInit(function (ctx) {
         player = buildPlayer(ctx.stats);
         setEffects(ctx.effects || []);
-        var startFloorNum = ctx.save && ctx.save.floor ? ctx.save.floor : 1;
+        startFloorNum = ctx.save && ctx.save.floor ? ctx.save.floor : 1;
         log('You enter the dungeon. (HP ' + player.maxhp + ', P.Att ' + player.patt + ', Speed ' + player.speed + ')', 'is-info');
         if (effectsList.length) {
           log('Effects: ' + effectsList.map(function (e) { return e.desc; }).join(' | '), 'is-loot');
         }
+        // Bank offline progress from the time the window was closed (may bump
+        // startFloorNum), then begin live play from wherever we ended up.
+        runAwayReport(ctx.awayMs);
         startFloor(startFloorNum);
         if (!loopTimer) loopTimer = setInterval(tick, TURN_MS);
       });

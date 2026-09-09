@@ -66,6 +66,31 @@ const COMMANDS = [
   { names: ['next'], usage: 'next / prev          page through a long item list', run: (s) => s.nextPage() },
   { names: ['prev', 'previous'], run: (s) => s.prevPage() },
   {
+    names: ['salvage'],
+    usage: [
+      'salvage <name>       break an item into scrap & essence',
+      'salvage all <rarity> bulk-salvage a rarity (common|rare|epic|legendary|all)',
+    ],
+    run: (s, args, arg) =>
+      (args[0] || '').toLowerCase() === 'all'
+        ? s.salvageAllRarity((args[1] || 'common').toLowerCase())
+        : s.salvageByName(arg),
+  },
+  { names: ['salvageall'], run: (s, args) => s.salvageAllRarity((args[0] || 'common').toLowerCase()) },
+  {
+    names: ['upgrade'],
+    usage: 'upgrade <name>       upgrade a weapon (+N) with materials',
+    run: (s, args, arg) => s.upgradeByName(arg),
+  },
+  {
+    names: ['autoscrap'],
+    usage: [
+      'autoscrap            show auto-scrap rules',
+      'autoscrap <type> <rarities>  e.g. autoscrap all common,rare  ·  autoscrap weapon none',
+    ],
+    run: (s, args) => s.autoScrapCmd(args),
+  },
+  {
     names: ['play'],
     usage: 'play <id>            launch a minigame',
     run: (s, args, arg) =>

@@ -20,6 +20,13 @@ import { effectiveStats, activeEffects } from '../game/character.js';
 
 const TAG = '__til';
 
+// Idle / away-time tracking. The shell stamps a per-minigame `lastOpen` while a
+// game is open (every HEARTBEAT_MS and on close) so that, on the next open, it
+// can tell the game how long the player was away and let it bank offline
+// progress. Away time is capped so a long absence can't produce absurd rewards.
+const HEARTBEAT_MS = 15000; // worst-case progress lost if the tab is closed
+const MAX_AWAY_MS = 24 * 60 * 60 * 1000; // 24h cap on banked idle time
+
 /**
  * Create a bridge channel bound to one iframe.
  *
@@ -35,9 +42,23 @@ export function createBridge({ iframe, minigame, onReward, onRequestClose }) {
   let unityInstance = null; // set by the loader page for Unity builds
   let disposed = false;
   let lastStatsJson = null; // dedup: only push stats when they actually change
+  let heartbeat = null; // interval that keeps lastOpen fresh while open
 
   function isFromThisFrame(event) {
     return iframe && event.source === iframe.contentWindow;
+  }
+
+  /** This minigame's shell-owned metadata slice (created on demand). */
+  function meta() {
+    if (!state.minigameMeta) state.minigameMeta = {};
+    if (!state.minigameMeta[minigame.id]) state.minigameMeta[minigame.id] = {};
+    return state.minigameMeta[minigame.id];
+  }
+
+  /** Record "the game is open right now" and persist (via emitChange autosave). */
+  function stampOpen() {
+    meta().lastOpen = Date.now();
+    emitChange();
   }
 
   /** Send a message INTO the minigame. Routes to Unity if an instance exists. */
@@ -66,17 +87,25 @@ export function createBridge({ iframe, minigame, onReward, onRequestClose }) {
     switch (data.type) {
       case 'ready': {
         // Hand the minigame its context: player level, combat stats, active
-        // item effects, and its own saved slice.
+        // item effects, its own saved slice, and how long it was away (capped)
+        // so it can bank offline progress.
         const stats = effectiveStats();
         const effects = activeEffects();
         lastStatsJson = JSON.stringify({ stats, effects });
+        const m = meta();
+        const now = Date.now();
+        const awayMs = m.lastOpen ? Math.min(Math.max(0, now - m.lastOpen), MAX_AWAY_MS) : 0;
         send('init', {
           minigameId: minigame.id,
           profile: { level: state.profile.level },
           stats,
           effects,
           save: state.minigames[minigame.id] || null,
+          awayMs,
         });
+        // Start the "open" clock and keep it ticking while the window lives.
+        stampOpen();
+        if (!heartbeat) heartbeat = setInterval(stampOpen, HEARTBEAT_MS);
         break;
       }
       case 'reward': {
@@ -127,6 +156,11 @@ export function createBridge({ iframe, minigame, onReward, onRequestClose }) {
     dispose() {
       if (disposed) return;
       disposed = true;
+      if (heartbeat) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+      }
+      stampOpen(); // final timestamp so away-time counts from the close
       if (unsubStats) unsubStats();
       try {
         send('shutdown');
