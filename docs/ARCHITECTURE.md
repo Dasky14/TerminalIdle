@@ -42,6 +42,10 @@ document explains how the pieces fit together.
   that mutates state calls `emitChange()`; the shell re-renders live screens.
 - **`leveling.js` / `inventory.js` / `resources.js`** — typed helpers that own
   their slice of state.
+- **`balance.js`** — the single home for every balance number (stat growth, XP
+  curve, drop rates, costs, combat multipliers, enemy tables). Loaded at boot
+  from an embedded default → bundled `balance.json` → optional backend override,
+  validated on the way in. See [BALANCE.md](BALANCE.md).
 - **`rewards.js`** — `applyReward({xp, resources, items})` fans a minigame reward
   out to the helpers above. Equipment drops (`{roll:'equipment'}`) roll a random
   item biased by Luck, then either enter the inventory or are auto-salvaged.
@@ -94,7 +98,7 @@ Envelope (both directions): `{ __til: true, dir: 'in'|'out', type, payload }`.
 | game → shell     | `progress`     | Persist a minigame-scoped save slice.             |
 | game → shell     | `requestClose` | Ask the shell to close the window.                |
 | game → shell     | `error`        | Log to shell console.                             |
-| shell → game     | `init`         | `{minigameId, profile:{level}, stats, effects, combat, save, awayMs}`. |
+| shell → game     | `init`         | `{minigameId, profile:{level}, stats, effects, combat, balance, save, awayMs}`. |
 | shell → game     | `stats`        | `{stats, effects, combat}` — pushed live when they change. |
 | shell → game     | `pause`/`resume`/`shutdown` | Lifecycle signals.                   |
 
@@ -108,7 +112,9 @@ its real combat for that time and banks the result in one batched `reward`.
 `effects` the active item effects, and `combat` the weapon combat profile
 (attacks per turn + defense multiplier — see [LOOT_RULES.md](LOOT_RULES.md)); all
 are sent at `init` and again (deduped) whenever they change, so a running game
-can react (the dungeon applies them at the end of the current fight).
+can react (the dungeon applies them at the end of the current fight). `balance`
+is the game-tuning object ([BALANCE.md](BALANCE.md)) — sent at `init` only (it's
+static per session) because the sandboxed iframe can't import `balance.js`.
 
 For **Unity WebGL**, `shell → game` is delivered via
 `unityInstance.SendMessage("TILBridge", "OnShellMessage", json)` instead of

@@ -11,7 +11,7 @@ import {
   SAVE_VERSION,
 } from './state.js';
 import { emptyStats } from './stats.js';
-import { POINTS_PER_LEVEL } from './leveling.js';
+import { pointsPerLevel } from './leveling.js';
 import { emptyEquipment } from './equipment.js';
 
 const STORAGE_KEY = 'til.save.v1';
@@ -29,7 +29,7 @@ const MIGRATIONS = {
     statPoints:
       old.statPoints != null
         ? old.statPoints
-        : Math.max(0, ((old.profile && old.profile.level) || 1) - 1) * POINTS_PER_LEVEL,
+        : Math.max(0, ((old.profile && old.profile.level) || 1) - 1) * pointsPerLevel(),
   }),
   // v2 -> v3: introduce equipment slots.
   2: (old) => ({

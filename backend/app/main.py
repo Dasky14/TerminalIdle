@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config  # noqa: E402
 
-from app.routers import saves, minigames, leaderboard  # noqa: E402
+from app.routers import saves, minigames, leaderboard, balance, items  # noqa: E402
 
 app = FastAPI(
     title="TerminalIdleProject API",
@@ -44,3 +44,5 @@ def health():
 app.include_router(saves.router)
 app.include_router(minigames.router)
 app.include_router(leaderboard.router)
+app.include_router(balance.router)
+app.include_router(items.router)

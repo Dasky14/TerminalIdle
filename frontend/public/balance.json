@@ -1,0 +1,52 @@
+{
+  "balanceVersion": 1,
+  "leveling": {
+    "xpBase": 100,
+    "xpExponent": 1.1,
+    "pointsPerLevel": 5
+  },
+  "upgrade": {
+    "statMult": 1.2,
+    "costGrowth": 1.5,
+    "baseCost": 10
+  },
+  "salvage": {
+    "rarityBase": { "common": 2, "rare": 6, "epic": 15, "legendary": 40 }
+  },
+  "loot": {
+    "luckK": 0.009,
+    "rarities": {
+      "common": { "weight": 0.749 },
+      "rare": { "weight": 0.2 },
+      "epic": { "weight": 0.05 },
+      "legendary": { "weight": 0.001 }
+    }
+  },
+  "combat": {
+    "twoHandMult": 1.3,
+    "dualWieldMult": 0.6,
+    "shieldDefMult": 1.2,
+    "mitigationK": 50,
+    "minHit": 0.1,
+    "roomsPerFloor": 6,
+    "floorGrowth": 0.15,
+    "turnMs": 1000,
+    "chestChance": 0.22,
+    "enemyDropChance": 0.35,
+    "xpPerEnemy": 10,
+    "xpPerBoss": 60,
+    "flatGrowth": { "acc": 1, "critRate": 0.2, "critDmg": 1, "luck": 0 },
+    "enemies": [
+      { "name": "Slime", "hp": 40, "patt": 6, "matt": 0, "pdef": 2, "mdef": 2, "speed": 5, "acc": 90, "dodge": 10, "critRate": 2, "critDmg": 150, "luck": 1 },
+      { "name": "Goblin", "hp": 50, "patt": 9, "matt": 0, "pdef": 3, "mdef": 2, "speed": 9, "acc": 90, "dodge": 18, "critRate": 5, "critDmg": 150, "luck": 2 },
+      { "name": "Bat", "hp": 30, "patt": 7, "matt": 0, "pdef": 1, "mdef": 1, "speed": 14, "acc": 90, "dodge": 30, "critRate": 8, "critDmg": 150, "luck": 3 },
+      { "name": "Skeleton", "hp": 60, "patt": 11, "matt": 0, "pdef": 5, "mdef": 1, "speed": 7, "acc": 90, "dodge": 12, "critRate": 5, "critDmg": 150, "luck": 1 },
+      { "name": "Acolyte", "hp": 45, "patt": 0, "matt": 12, "pdef": 2, "mdef": 5, "speed": 8, "acc": 90, "dodge": 15, "critRate": 5, "critDmg": 150, "luck": 2 }
+    ],
+    "bosses": [
+      { "name": "Ogre", "hp": 120, "patt": 16, "matt": 0, "pdef": 6, "mdef": 4, "speed": 6, "acc": 90, "dodge": 12, "critRate": 5, "critDmg": 160, "luck": 3 },
+      { "name": "Dark Mage", "hp": 100, "patt": 0, "matt": 20, "pdef": 4, "mdef": 8, "speed": 9, "acc": 90, "dodge": 18, "critRate": 8, "critDmg": 160, "luck": 4 },
+      { "name": "Dragonling", "hp": 150, "patt": 18, "matt": 10, "pdef": 8, "mdef": 6, "speed": 10, "acc": 90, "dodge": 22, "critRate": 10, "critDmg": 175, "luck": 5 }
+    ]
+  }
+}

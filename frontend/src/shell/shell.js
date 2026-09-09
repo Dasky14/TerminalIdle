@@ -19,7 +19,7 @@ import { exportSave, importSave, resetSave } from '../game/save.js';
 import { getConfig } from '../config.js';
 import { allocate, resetStats } from '../game/character.js';
 import { STAT_DEFS, statValue, formatStat, findStat } from '../game/stats.js';
-import { POINTS_PER_LEVEL } from '../game/leveling.js';
+import { pointsPerLevel } from '../game/leveling.js';
 import {
   equipByUid,
   equipInSlotByUid,
@@ -401,7 +401,7 @@ export class Shell {
       }
       return;
     }
-    this.term(`character stats — you gain ${POINTS_PER_LEVEL} points per level.`, 'is-warn');
+    this.term(`character stats — you gain ${pointsPerLevel()} points per level.`, 'is-warn');
     this.term('allocate:  stats add <stat> <points>     (e.g. stats add p.att 5)');
     this.term('remove:    stats add <stat> -<points>    respec: stats reset');
     this.term(`points available: ${state.statPoints}`);

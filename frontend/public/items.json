@@ -1,0 +1,51 @@
+{
+  "bases": [
+    { "key": "sword", "name": "Sword", "slot": "weapon", "hands": 1, "atkType": "physical", "stats": { "patt": 6 } },
+    { "key": "dagger", "name": "Dagger", "slot": "weapon", "hands": 1, "atkType": "physical", "stats": { "patt": 4, "speed": 2 } },
+    { "key": "wand", "name": "Wand", "slot": "weapon", "hands": 1, "atkType": "magical", "stats": { "matt": 6 } },
+    { "key": "greatsword", "name": "Greatsword", "slot": "weapon", "hands": 2, "atkType": "physical", "stats": { "patt": 12 } },
+    { "key": "staff", "name": "Staff", "slot": "weapon", "hands": 2, "atkType": "magical", "stats": { "matt": 12 } },
+    { "key": "shield", "name": "Shield", "slot": "weapon", "hands": "off", "stats": { "pdef": 5, "hp": 20 } },
+    { "key": "helmet", "name": "Helmet", "slot": "head", "stats": { "pdef": 2, "mdef": 2 } },
+    { "key": "chestplate", "name": "Chestplate", "slot": "chest", "stats": { "pdef": 4, "hp": 30 } },
+    { "key": "gauntlets", "name": "Gauntlets", "slot": "hands", "stats": { "patt": 2, "pdef": 1 } },
+    { "key": "greaves", "name": "Greaves", "slot": "legs", "stats": { "pdef": 3 } },
+    { "key": "boots", "name": "Boots", "slot": "feet", "stats": { "speed": 3 } }
+  ],
+  "prefixes": {
+    "hp": ["Hearty", "Robust", "Titanic"],
+    "patt": ["Sharp", "Keen", "Brutal"],
+    "matt": ["Mystic", "Arcane", "Eldritch"],
+    "pdef": ["Sturdy", "Plated", "Impregnable"],
+    "mdef": ["Warded", "Runed", "Hallowed"],
+    "speed": ["Swift", "Fleet", "Blurring"],
+    "acc": ["Precise", "Keeneye", "Unerring"],
+    "dodge": ["Nimble", "Evasive", "Ghostly"],
+    "critRate": ["Deadly", "Lethal", "Murderous"],
+    "critDmg": ["Vicious", "Savage", "Cataclysmic"],
+    "luck": ["Lucky", "Fortunate", "Blessed"]
+  },
+  "suffixes": {
+    "hp": ["of Vigor", "of Vitality", "of the Colossus"],
+    "patt": ["of Might", "of Power", "of Devastation"],
+    "matt": ["of Magic", "of Sorcery", "of the Archmage"],
+    "pdef": ["of Protection", "of the Bulwark", "of the Aegis"],
+    "mdef": ["of Warding", "of Spellguard", "of the Sanctum"],
+    "speed": ["of Haste", "of Alacrity", "of the Gale"],
+    "acc": ["of Aim", "of Precision", "of the Hawk"],
+    "dodge": ["of Evasion", "of the Fox", "of Shadows"],
+    "critRate": ["of Striking", "of the Assassin", "of Slaughter"],
+    "critDmg": ["of Ruin", "of Carnage", "of Annihilation"],
+    "luck": ["of Luck", "of Fortune", "of Destiny"]
+  },
+  "legendaries": [
+    { "key": "excalibur", "name": "Excalibur", "slot": "weapon", "hands": 2, "atkType": "physical", "stats": { "patt": 25, "critRate": 10 }, "effects": ["ignoreDefense"] },
+    { "key": "aegis", "name": "Aegis of the Ancients", "slot": "weapon", "hands": "off", "stats": { "pdef": 15, "mdef": 15, "hp": 50 }, "effects": ["firstHitShield"] },
+    { "key": "sandals", "name": "Hermes' Sandals", "slot": "feet", "stats": { "speed": 15, "acc": 5 }, "effects": ["alwaysFirst"] }
+  ],
+  "effects": {
+    "ignoreDefense": { "value": 0.3, "desc": "Radiant Edge — ignores 30% of enemy defense." },
+    "firstHitShield": { "desc": "Bulwark — negates the first hit each battle." },
+    "alwaysFirst": { "desc": "Fleetfooted — you always act first." }
+  }
+}

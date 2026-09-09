@@ -19,9 +19,7 @@ import { addResources } from './resources.js';
 import { listItems, removeItem } from './inventory.js';
 import { effectiveItemStats, itemUpgradeLevel } from './items.js';
 import { STAT_DEFS } from './stats.js';
-
-/** Base salvage output (in resource units) per rarity, before orientation split. */
-export const RARITY_SALVAGE = { common: 2, rare: 6, epic: 15, legendary: 40 };
+import { getBalance } from './balance.js';
 
 const PHYS_STATS = ['patt', 'pdef'];
 const MAG_STATS = ['matt', 'mdef'];
@@ -43,7 +41,7 @@ export function salvageYield(item) {
   const denom = total || 1;
   const scrapShare = (phys + neutral / 2) / denom;
   const essenceShare = (mag + neutral / 2) / denom;
-  const units = (RARITY_SALVAGE[item.rarity] || 1) + Math.floor(total / 10);
+  const units = (getBalance().salvage.rarityBase[item.rarity] || 1) + Math.floor(total / 10);
   return {
     scrap: Math.max(0, Math.round(units * scrapShare)),
     essence: Math.max(0, Math.round(units * essenceShare)),

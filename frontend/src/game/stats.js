@@ -23,7 +23,9 @@
 //   - P.Def / M.Def mitigation  -> dungeon computeAttack()
 //   - Accuracy / Dodge hit%      -> dungeon hitChance() (and MIN_HIT)
 //   - Crit rate, multi-crit, Crit Damage -> dungeon computeAttack()
-//   - Luck -> loot rarity         -> game/items.js rollRarity() (LUCK_K, RARITIES)
+//   - Luck -> loot rarity         -> game/items.js rollRarity(); the weights &
+//     luckK are balance (game/balance.js `loot`), the catalogue is content
+//     (game/items-data.js / public/items.json)
 //   - P.Att/M.Att attack type & weapon multipliers (2H 1.3x, dual 0.6x each,
 //     shield 1.2x defense) -> character.js combatProfile() + dungeon combat;
 //     the loot side of those rules lives in docs/LOOT_RULES.md.

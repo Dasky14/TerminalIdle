@@ -17,6 +17,7 @@
 import { applyReward } from '../game/rewards.js';
 import { state, emitChange, onChange } from '../game/state.js';
 import { effectiveStats, activeEffects, combatProfile } from '../game/character.js';
+import { getBalance } from '../game/balance.js';
 
 const TAG = '__til';
 
@@ -102,6 +103,7 @@ export function createBridge({ iframe, minigame, onReward, onRequestClose }) {
           stats,
           effects,
           combat,
+          balance: getBalance(), // tuning for the sandboxed game (it can't import balance.js)
           save: state.minigames[minigame.id] || null,
           awayMs,
         });

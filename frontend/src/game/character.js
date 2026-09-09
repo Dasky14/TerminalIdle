@@ -8,6 +8,7 @@ import { state, emitChange } from './state.js';
 import { findStat, statValue, STAT_DEFS } from './stats.js';
 import { equipmentBonuses, EQUIP_SLOTS } from './equipment.js';
 import { itemEffects, weaponAtkType } from './items.js';
+import { getBalance } from './balance.js';
 
 /**
  * The player's effective combat stats: allocation value + equipment bonuses,
@@ -41,6 +42,7 @@ export function effectiveStats() {
  * @returns {{attacks:{type:'physical'|'magical',mult:number}[], defenseMult:number, label:string}}
  */
 export function combatProfile() {
+  const { twoHandMult, dualWieldMult, shieldDefMult } = getBalance().combat;
   const w1 = state.equipment.weapon1;
   const w2 = state.equipment.weapon2;
   let attacks;
@@ -48,16 +50,16 @@ export function combatProfile() {
   let label;
 
   if (w1 && w1.hands === 2) {
-    attacks = [{ type: weaponAtkType(w1), mult: 1.3 }];
+    attacks = [{ type: weaponAtkType(w1), mult: twoHandMult }];
     label = 'two-handed';
   } else {
     const oneH = [];
     if (w1 && w1.hands === 1) oneH.push(w1);
     if (w2 && w2.hands === 1) oneH.push(w2);
-    if ((w1 && w1.hands === 'off') || (w2 && w2.hands === 'off')) defenseMult = 1.2;
+    if ((w1 && w1.hands === 'off') || (w2 && w2.hands === 'off')) defenseMult = shieldDefMult;
 
     if (oneH.length === 2) {
-      attacks = oneH.map((w) => ({ type: weaponAtkType(w), mult: 0.6 }));
+      attacks = oneH.map((w) => ({ type: weaponAtkType(w), mult: dualWieldMult }));
       label = 'dual wield';
     } else if (oneH.length === 1) {
       attacks = [{ type: weaponAtkType(oneH[0]), mult: 1 }];

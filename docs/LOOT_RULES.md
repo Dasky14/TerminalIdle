@@ -4,6 +4,30 @@ The canonical spec for how weapons deal damage and how weapon loot is rolled.
 These rules are meant to be **enforced by generation**, not just hoped for — the
 enforcement points are named so they stay in sync.
 
+## Adding items, modifiers & effects (data-driven)
+
+The item **catalogue** is data: [`game/items-data.js`](../frontend/src/game/items-data.js)
+(embedded default) and [`public/items.json`](../frontend/public/items.json)
+(editable post-build, backend-overridable — same layering as balance). Edit
+either to extend the game:
+
+- **A weapon/armour** — add a `bases` entry: `{ key, name, slot, hands?,
+  atkType?, stats:{} }`. Weapons use `slot:"weapon"` with `hands` 1/2/`"off"` and
+  need `atkType` (`"physical"`|`"magical"`); armour just needs its slot.
+- **A modifier name** — the `prefixes`/`suffixes` tables map a stat id to its
+  three tier names. The stat *value* a modifier grants is derived
+  (`perPoint × tier`), so these are pure naming.
+- **A legendary** — add a `legendaries` entry (like a base, plus `effects`).
+
+**Effects** are a registry: `effects` maps an id to `{ desc, value? }`. **Any
+item can carry an effect** by listing its id in that item's `effects` array — a
+bare id (`"firstHitShield"`) or an object (`{ "id": "ignoreDefense", "value":
+0.5 }`) to override the registry value. Base items grant their effects to every
+instance they roll; legendaries carry theirs; `itemEffects()` resolves the refs.
+The effect's combat *behaviour* is implemented **by id in the dungeon** — reusing
+an existing id (`ignoreDefense`, `firstHitShield`, `alwaysFirst`) is a pure data
+edit; a brand-new id also needs a combat hook added there.
+
 ## Damage type comes from the weapon, not the higher stat
 
 A player attack's damage type is decided by the **equipped weapon**, not by

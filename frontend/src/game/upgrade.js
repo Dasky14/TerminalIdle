@@ -12,17 +12,15 @@
 // duplicate, +1->+2 needs 2, +2->+3 needs 3, and so on (level L -> L+1 needs
 // L+1). Duplicates are other inventory items with the same base legendary key.
 //
-// HELP COUPLING: UPGRADE_STAT_MULT lives in game/items.js (it also drives
-// effectiveItemStats). The cost constants below are the economy's other half —
-// they're documented in `help upgrade` (shell). Change one side, change the doc.
+// The upgrade economy's numbers — stat multiplier and the cost constants below
+// — all live in game/balance.js (`upgrade` section). itemStatMult (items.js)
+// reads statMult; upgradeCost() here reads costGrowth / baseCost.
 
 import { emitChange } from './state.js';
 import { getResource, addResource } from './resources.js';
 import { listItems, removeItem } from './inventory.js';
 import { itemUpgradeLevel } from './items.js';
-
-export const UPGRADE_COST_GROWTH = 1.5; // material cost multiplier per level
-export const UPGRADE_BASE_COST = 10; // material cost of the first upgrade (0 -> 1)
+import { getBalance } from './balance.js';
 
 /** Any equipment item (has an equip slot) can be upgraded. */
 export function isUpgradeable(item) {
@@ -44,10 +42,11 @@ export function upgradeResource(item) {
 /** The cost to take an item from its current level to the next. */
 export function upgradeCost(item) {
   const lvl = itemUpgradeLevel(item);
+  const { baseCost, costGrowth } = getBalance().upgrade;
   return {
     level: lvl + 1,
     resource: upgradeResource(item),
-    amount: Math.round(UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_GROWTH, lvl)),
+    amount: Math.round(baseCost * Math.pow(costGrowth, lvl)),
     duplicates: item.rarity === 'legendary' ? lvl + 1 : 0,
     dupKey: item.base,
   };

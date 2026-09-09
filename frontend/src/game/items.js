@@ -1,10 +1,16 @@
-// Item data + generation.
+// Item generation.
 //
 // Two kinds of items:
 //   - Randomly generated: common / rare / epic. Built from a BASE item plus
 //     name modifiers (prefixes/suffixes). Rarity sets how many modifiers:
 //       common = 0, rare = 1 (prefix OR suffix), epic = 2 (prefix AND suffix).
-//   - Legendary: hand-authored named items with fixed stats and unique effects.
+//   - Legendary: named items with fixed stats and effects.
+//
+// The item CATALOGUE (bases, modifier names, legendaries, effect registry) is
+// DATA and lives in game/items-data.js / public/items.json — edit that to add
+// weapons/modifiers/legendaries. This module is the LOGIC: rolling, naming, the
+// weapon loot rules, and effect resolution. Drop rates & luck are balance and
+// live in game/balance.js (`loot`).
 //
 // A modifier is tied to one stat and has 3 tiers. Its stat boost is derived, not
 // hard-coded: value = (that stat's perPoint) * tier. So tier 1/2/3 of a luck
@@ -12,109 +18,17 @@
 // allocation scale in stats.js and keeping everything easy to rebalance/graph.
 
 import { STAT_DEFS, formatStat } from './stats.js';
+import { getBalance } from './balance.js';
+import { getItems } from './items-data.js';
 
 const PER_POINT = Object.fromEntries(STAT_DEFS.map((d) => [d.id, d.perPoint]));
 
-// Rarity metadata. `weight` is the base drop chance at luck 0 (they sum to 1).
-// `mods` is how many name modifiers the rarity rolls.
-export const RARITIES = {
-  common: { label: 'Common', mods: 0, weight: 0.749 },
-  rare: { label: 'Rare', mods: 1, weight: 0.2 },
-  epic: { label: 'Epic', mods: 2, weight: 0.05 },
-  legendary: { label: 'Legendary', mods: 0, weight: 0.001 },
-};
-
-// Rarity order, worst -> best (used to lay out the [0,1) roll space).
+// Rarity order, worst -> best (used to lay out the [0,1) roll space). The
+// per-rarity drop weights and the luck warp constant are balance — see
+// game/balance.js `loot` (rollRarity/rarityChances read them).
+// HELP COUPLING: the Luck `help` in stats.js and `stats help luck` (live odds
+// via rarityChances) reflect those numbers automatically.
 export const RARITY_TIERS = ['common', 'rare', 'epic', 'legendary'];
-
-// Luck warps a single [0,1) roll toward higher rarity:
-//   quality = roll ^ (1 / (1 + luck * LUCK_K))
-// which raises the chance of landing in the high-rarity bands. LUCK_K is tuned
-// so ~luck 1000 gives ~1% legendary (from a 0.1% base). Bump it to make luck
-// pay off faster.
-// HELP COUPLING: the Luck `help` in stats.js describes this, and `stats help
-// luck` prints live odds via rarityChances(). The base rates above are also
-// quoted there — keep them in sync if you retune weights or LUCK_K.
-export const LUCK_K = 0.009;
-
-// Base items. `slot` is the equip slot; weapons use slot 'weapon' with `hands`:
-// 1 (one-handed), 2 (two-handed), or 'off' (off-hand, e.g. a shield).
-// Attacking weapons carry `atkType` ('physical' | 'magical') — the damage type
-// they deal, which drives combat (see docs/LOOT_RULES.md and character.js
-// combatProfile). Off-hand items (shields) don't attack, so they have none.
-// Base attack parity: a two-handed weapon's base attack is ~2x a one-handed's
-// (it occupies both weapon slots) — see LOOT_RULES.
-export const BASE_ITEMS = [
-  { key: 'sword', name: 'Sword', slot: 'weapon', hands: 1, atkType: 'physical', base: { patt: 6 } },
-  { key: 'dagger', name: 'Dagger', slot: 'weapon', hands: 1, atkType: 'physical', base: { patt: 4, speed: 2 } },
-  { key: 'wand', name: 'Wand', slot: 'weapon', hands: 1, atkType: 'magical', base: { matt: 6 } },
-  { key: 'greatsword', name: 'Greatsword', slot: 'weapon', hands: 2, atkType: 'physical', base: { patt: 12 } },
-  { key: 'staff', name: 'Staff', slot: 'weapon', hands: 2, atkType: 'magical', base: { matt: 12 } },
-  { key: 'shield', name: 'Shield', slot: 'weapon', hands: 'off', base: { pdef: 5, hp: 20 } },
-  { key: 'helmet', name: 'Helmet', slot: 'head', base: { pdef: 2, mdef: 2 } },
-  { key: 'chestplate', name: 'Chestplate', slot: 'chest', base: { pdef: 4, hp: 30 } },
-  { key: 'gauntlets', name: 'Gauntlets', slot: 'hands', base: { patt: 2, pdef: 1 } },
-  { key: 'greaves', name: 'Greaves', slot: 'legs', base: { pdef: 3 } },
-  { key: 'boots', name: 'Boots', slot: 'feet', base: { speed: 3 } },
-];
-
-// Modifier names, keyed by stat id; index 0/1/2 = tier 1/2/3.
-export const PREFIXES = {
-  hp: ['Hearty', 'Robust', 'Titanic'],
-  patt: ['Sharp', 'Keen', 'Brutal'],
-  matt: ['Mystic', 'Arcane', 'Eldritch'],
-  pdef: ['Sturdy', 'Plated', 'Impregnable'],
-  mdef: ['Warded', 'Runed', 'Hallowed'],
-  speed: ['Swift', 'Fleet', 'Blurring'],
-  acc: ['Precise', 'Keeneye', 'Unerring'],
-  dodge: ['Nimble', 'Evasive', 'Ghostly'],
-  critRate: ['Deadly', 'Lethal', 'Murderous'],
-  critDmg: ['Vicious', 'Savage', 'Cataclysmic'],
-  luck: ['Lucky', 'Fortunate', 'Blessed'],
-};
-export const SUFFIXES = {
-  hp: ['of Vigor', 'of Vitality', 'of the Colossus'],
-  patt: ['of Might', 'of Power', 'of Devastation'],
-  matt: ['of Magic', 'of Sorcery', 'of the Archmage'],
-  pdef: ['of Protection', 'of the Bulwark', 'of the Aegis'],
-  mdef: ['of Warding', 'of Spellguard', 'of the Sanctum'],
-  speed: ['of Haste', 'of Alacrity', 'of the Gale'],
-  acc: ['of Aim', 'of Precision', 'of the Hawk'],
-  dodge: ['of Evasion', 'of the Fox', 'of Shadows'],
-  critRate: ['of Striking', 'of the Assassin', 'of Slaughter'],
-  critDmg: ['of Ruin', 'of Carnage', 'of Annihilation'],
-  luck: ['of Luck', 'of Fortune', 'of Destiny'],
-};
-
-// Named legendary items — fixed stats and structured unique effects.
-// An effect is data the combat engine can act on: { id, value?, desc }.
-// See minigames/dungeon for the combat hooks that implement each id.
-export const LEGENDARIES = [
-  {
-    key: 'excalibur',
-    name: 'Excalibur',
-    slot: 'weapon',
-    hands: 2,
-    atkType: 'physical',
-    stats: { patt: 25, critRate: 10 },
-    effects: [{ id: 'ignoreDefense', value: 0.3, desc: 'Radiant Edge — ignores 30% of enemy defense.' }],
-  },
-  {
-    key: 'aegis',
-    name: 'Aegis of the Ancients',
-    slot: 'weapon',
-    hands: 'off',
-    stats: { pdef: 15, mdef: 15, hp: 50 },
-    effects: [{ id: 'firstHitShield', desc: 'Bulwark — negates the first hit each battle.' }],
-  },
-  {
-    key: 'sandals',
-    name: "Hermes' Sandals",
-    slot: 'feet',
-    stats: { speed: 15, acc: 5 },
-    effects: [{ id: 'alwaysFirst', desc: 'Fleetfooted — you always act first.' }],
-  },
-];
 
 // --- helpers ---------------------------------------------------------------
 const randInt = (n) => Math.floor(Math.random() * n);
@@ -135,10 +49,11 @@ export function modifierValue(statId, tier) {
  * At luck 0 it reproduces the base weights exactly.
  */
 export function rollRarity(luck = 0) {
-  const quality = Math.pow(Math.random(), 1 / (1 + Math.max(0, luck) * LUCK_K));
+  const { luckK, rarities } = getBalance().loot;
+  const quality = Math.pow(Math.random(), 1 / (1 + Math.max(0, luck) * luckK));
   let cum = 0;
   for (const tier of RARITY_TIERS) {
-    cum += RARITIES[tier].weight;
+    cum += (rarities[tier] && rarities[tier].weight) || 0;
     if (quality < cum) return tier;
   }
   return 'legendary';
@@ -146,12 +61,13 @@ export function rollRarity(luck = 0) {
 
 /** P(rarity) for a given luck — handy for tuning/telemetry. */
 export function rarityChances(luck = 0) {
-  const exp = 1 + Math.max(0, luck) * LUCK_K;
+  const { luckK, rarities } = getBalance().loot;
+  const exp = 1 + Math.max(0, luck) * luckK;
   // P(quality >= t) = 1 - t^exp, evaluated at each cumulative boundary.
   let lowerCum = 0;
   const out = {};
   for (const tier of RARITY_TIERS) {
-    const upperCum = lowerCum + RARITIES[tier].weight;
+    const upperCum = lowerCum + ((rarities[tier] && rarities[tier].weight) || 0);
     const pAtLeastLower = 1 - Math.pow(lowerCum, exp); // quality >= lowerCum
     const pAtLeastUpper = upperCum >= 1 ? 0 : 1 - Math.pow(upperCum, exp);
     out[tier] = pAtLeastLower - pAtLeastUpper;
@@ -163,7 +79,7 @@ export function rarityChances(luck = 0) {
 function makeMod(kind, pool) {
   const statId = randOf(pool);
   const tier = randInt(3) + 1; // 1..3
-  const names = kind === 'prefix' ? PREFIXES : SUFFIXES;
+  const names = kind === 'prefix' ? getItems().prefixes : getItems().suffixes;
   return { statId, kind, tier, name: names[statId][tier - 1], value: modifierValue(statId, tier) };
 }
 
@@ -182,9 +98,10 @@ function rollMods(rarity, pool = STAT_IDS) {
 export function weaponAtkType(item) {
   if (!item) return 'physical';
   if (item.atkType) return item.atkType;
-  const def = BASE_ITEMS.find((b) => b.key === item.base) || LEGENDARIES.find((l) => l.key === item.base);
+  const cat = getItems();
+  const def = cat.bases.find((b) => b.key === item.base) || cat.legendaries.find((l) => l.key === item.base);
   if (def && def.atkType) return def.atkType;
-  const s = (def && (def.base || def.stats)) || item.stats || {};
+  const s = (def && def.stats) || item.stats || {};
   return (s.matt || 0) > (s.patt || 0) ? 'magical' : 'physical';
 }
 
@@ -201,7 +118,7 @@ function buildName(baseName, mods) {
 }
 
 function instantiateLegendary(def) {
-  const l = def || randOf(LEGENDARIES);
+  const l = def || randOf(getItems().legendaries);
   const item = {
     uid: newUid(),
     base: l.key,
@@ -211,7 +128,9 @@ function instantiateLegendary(def) {
     rarity: 'legendary',
     mods: [],
     stats: { ...l.stats },
-    effects: (l.effects || []).map((e) => ({ ...e })),
+    // Store effect refs as authored (ids or {id,value?}); itemEffects resolves
+    // them against the registry at read time.
+    effects: (l.effects || []).map((e) => (typeof e === 'string' ? e : { ...e })),
   };
   if (l.atkType) item.atkType = l.atkType;
   return item;
@@ -225,7 +144,7 @@ export function generateItem(opts = {}) {
   const rarity = opts.rarity || rollRarity(opts.luck || 0);
   if (rarity === 'legendary') return instantiateLegendary(opts.legendary);
 
-  const base = randOf(BASE_ITEMS);
+  const base = randOf(getItems().bases);
   const isWeapon = base.slot === 'weapon';
   const twoHanded = base.hands === 2;
 
@@ -255,45 +174,65 @@ export function generateItem(opts = {}) {
     hands: base.hands,
     rarity,
     mods: mods.map((m) => ({ statId: m.statId, kind: m.kind, tier: m.tier, name: m.name, value: m.value })),
-    stats: mergeStats(base.base, mods),
+    stats: mergeStats(base.stats, mods),
   };
   if (isWeapon && base.atkType) item.atkType = base.atkType;
+  // A base item may grant effects (by id) to every instance it rolls — the same
+  // effect system legendaries use. itemEffects resolves these at read time.
+  if (Array.isArray(base.effects) && base.effects.length) {
+    item.effects = base.effects.map((e) => (typeof e === 'string' ? e : { ...e }));
+  }
   return item;
 }
 
 /**
- * The structured effects of an item. Reads the instance's `effects`, falling
- * back to the legendary definition by base key — so items saved before effects
- * were structured (or that only carry the old `effect` string) still work.
+ * The resolved effects of an item as structured descriptors. Each source ref is
+ * a bare id string or an object ({ id, value?, desc? }); it's resolved against
+ * the effect registry (items-data.js `effects`) so a ref can be just an id.
+ * Reads the instance's `effects`, falling back to the item's base/legendary
+ * definition by key — so old saves (which stored full effect objects) and new
+ * id-only refs both work.
  * @returns {Array<{id:string,value?:number,desc:string}>}
  */
 export function itemEffects(item) {
   if (!item) return [];
-  if (Array.isArray(item.effects)) return item.effects;
-  if (item.rarity === 'legendary') {
-    const def = LEGENDARIES.find((l) => l.key === item.base);
-    if (def && def.effects) return def.effects;
+  const cat = getItems();
+  const registry = cat.effects || {};
+  const resolve = (e) => {
+    const id = typeof e === 'string' ? e : e && e.id;
+    if (!id) return null;
+    const reg = registry[id] || {};
+    const obj = typeof e === 'object' && e ? e : {};
+    const value = obj.value != null ? obj.value : reg.value;
+    const desc = obj.desc || reg.desc || id;
+    return value != null ? { id, value, desc } : { id, desc };
+  };
+
+  let refs = Array.isArray(item.effects) ? item.effects : null;
+  if (!refs) {
+    // Fall back to the definition by base key (covers items that don't carry
+    // their own effects, e.g. an older save missing the field).
+    const def = cat.legendaries.find((l) => l.key === item.base) || cat.bases.find((b) => b.key === item.base);
+    if (def && Array.isArray(def.effects)) refs = def.effects;
   }
-  return [];
+  return (refs || []).map(resolve).filter(Boolean);
 }
 
 // --- Upgrades --------------------------------------------------------------
-// Weapons can be upgraded (see game/upgrade.js). An upgrade multiplies ALL of
-// the item's stats by UPGRADE_STAT_MULT per level; the level is stored on the
-// item as `upgrade` (missing = 0) and shown after the name as "+N".
-// HELP COUPLING: UPGRADE_STAT_MULT is the stat side of the upgrade economy; the
-// cost side (UPGRADE_COST_GROWTH / UPGRADE_BASE_COST / legendary duplicates)
-// lives in game/upgrade.js. Keep the multiplier here in sync with that module.
-export const UPGRADE_STAT_MULT = 1.2;
+// Equipment can be upgraded (see game/upgrade.js). An upgrade multiplies ALL of
+// the item's stats by the balance `upgrade.statMult` per level; the level is
+// stored on the item as `upgrade` (missing = 0) and shown after the name "+N".
+// The stat multiplier and the cost constants both live in game/balance.js
+// (`upgrade` section) — the single source for the upgrade economy.
 
 /** The upgrade level of an item (0 for un-upgraded or non-weapon items). */
 export function itemUpgradeLevel(item) {
   return Math.max(0, Math.floor((item && item.upgrade) || 0));
 }
 
-/** The stat multiplier from an item's upgrade level: 1.2^level. */
+/** The stat multiplier from an item's upgrade level: statMult^level. */
 export function itemStatMult(item) {
-  return Math.pow(UPGRADE_STAT_MULT, itemUpgradeLevel(item));
+  return Math.pow(getBalance().upgrade.statMult, itemUpgradeLevel(item));
 }
 
 /**
@@ -346,9 +285,10 @@ export function modifierHelpLines() {
   const fmtTiers = (id, names) =>
     names.map((nm, i) => `${nm} (+${formatStat(def(id), modifierValue(id, i + 1))})`).join(' / ');
 
+  const { prefixes, suffixes } = getItems();
   lines.push('PREFIXES (name goes before the item):');
-  for (const id of STAT_IDS) lines.push(`  ${(abbr(id) + ':').padEnd(9)}${fmtTiers(id, PREFIXES[id])}`);
+  for (const id of STAT_IDS) if (prefixes[id]) lines.push(`  ${(abbr(id) + ':').padEnd(9)}${fmtTiers(id, prefixes[id])}`);
   lines.push('SUFFIXES (name goes after the item):');
-  for (const id of STAT_IDS) lines.push(`  ${(abbr(id) + ':').padEnd(9)}${fmtTiers(id, SUFFIXES[id])}`);
+  for (const id of STAT_IDS) if (suffixes[id]) lines.push(`  ${(abbr(id) + ':').padEnd(9)}${fmtTiers(id, suffixes[id])}`);
   return lines;
 }

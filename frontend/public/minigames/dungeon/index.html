@@ -129,6 +129,10 @@
     <script src="til-sdk.js"></script>
     <script>
       // ---- Tunables ---------------------------------------------------------
+      // These are DEFAULTS/fallbacks. The shell sends the authoritative values
+      // in init.balance.combat (from game/balance.js) — see applyBalance() — so
+      // balance is edited in one place, not here. If init carries no balance
+      // (e.g. the standalone fallback boot), these keep the game playable.
       var ROOMS_PER_FLOOR = 6; // last room is the boss
       var CHEST_CHANCE = 0.22;
       var ENEMY_DROP_CHANCE = 0.35;
@@ -137,6 +141,7 @@
       var XP_PER_ENEMY = 10; // * floor
       var XP_PER_BOSS = 60; // * floor
       var MIN_HIT = 0.1; // dodge can never drop hit chance below 10%
+      var MITIGATION_K = 50; // damage taken = raw * (1 - def/(def + K))
 
       // ---- Enemy archetypes (base level-1 stats) ---------------------------
       var ENEMIES = [
@@ -225,7 +230,7 @@
         var baseDef = physical ? defender.pdef : defender.mdef;
         var def = baseDef * (defender.defenseMult || 1) * (1 - (opts.defPen || 0));
         if (def < 0) def = 0;
-        var dmg = raw * (50 / (def + 50));
+        var dmg = raw * (MITIGATION_K / (def + MITIGATION_K));
         // Multi-crit: every full 100% crit rate is a guaranteed crit, and the
         // remainder is the chance of one more. Each crit multiplies by CritDmg,
         // so N crits = dmg * (critDmg/100)^N.
@@ -672,7 +677,35 @@
         render();
       }
 
+      // Apply the balance the shell sends in init.balance.combat. Missing or
+      // invalid fields keep the defaults above, so the game still runs if no
+      // balance arrives (e.g. the standalone fallback boot).
+      function applyBalance(bal) {
+        if (!bal || typeof bal !== 'object') return;
+        var n = function (v, d) { return typeof v === 'number' && isFinite(v) ? v : d; };
+        ROOMS_PER_FLOOR = n(bal.roomsPerFloor, ROOMS_PER_FLOOR);
+        CHEST_CHANCE = n(bal.chestChance, CHEST_CHANCE);
+        ENEMY_DROP_CHANCE = n(bal.enemyDropChance, ENEMY_DROP_CHANCE);
+        FLOOR_GROWTH = n(bal.floorGrowth, FLOOR_GROWTH);
+        TURN_MS = n(bal.turnMs, TURN_MS);
+        XP_PER_ENEMY = n(bal.xpPerEnemy, XP_PER_ENEMY);
+        XP_PER_BOSS = n(bal.xpPerBoss, XP_PER_BOSS);
+        MIN_HIT = n(bal.minHit, MIN_HIT);
+        MITIGATION_K = n(bal.mitigationK, MITIGATION_K);
+        if (bal.flatGrowth && typeof bal.flatGrowth === 'object') {
+          FLAT_GROWTH = {
+            acc: n(bal.flatGrowth.acc, FLAT_GROWTH.acc),
+            critRate: n(bal.flatGrowth.critRate, FLAT_GROWTH.critRate),
+            critDmg: n(bal.flatGrowth.critDmg, FLAT_GROWTH.critDmg),
+            luck: n(bal.flatGrowth.luck, FLAT_GROWTH.luck),
+          };
+        }
+        if (Array.isArray(bal.enemies) && bal.enemies.length) ENEMIES = bal.enemies;
+        if (Array.isArray(bal.bosses) && bal.bosses.length) BOSSES = bal.bosses;
+      }
+
       TIL.onInit(function (ctx) {
+        applyBalance(ctx.balance && ctx.balance.combat);
         player = buildPlayer(ctx.stats, ctx.combat);
         setEffects(ctx.effects || []);
         startFloorNum = ctx.save && ctx.save.floor ? ctx.save.floor : 1;

@@ -5,16 +5,19 @@
 // `xpForLevel` to taste.
 
 import { state, emitChange } from './state.js';
+import { getBalance } from './balance.js';
 
-/** Stat points granted on each level up. */
-export const POINTS_PER_LEVEL = 5;
+/** Stat points granted on each level up (balance-tunable). */
+export function pointsPerLevel() {
+  return getBalance().leveling.pointsPerLevel;
+}
 
 /** Total XP required to advance FROM `level` to `level + 1`. */
 export function xpForLevel(level) {
-  // 100 * currentLevel^1.1  (L1->2 = 100, L2->3 ~= 214, L10->11 ~= 1258, ...)
-  // NOTE: this curve isn't quoted in any help command yet. If you ever surface
-  // it (e.g. a `help leveling`), document the exponent there and reference this.
-  return Math.floor(100 * Math.pow(level, 1.1));
+  // xpBase * currentLevel^xpExponent  (defaults 100 / 1.1: L1->2 = 100, ...).
+  // The constants live in game/balance.js (leveling.xpBase / xpExponent).
+  const { xpBase, xpExponent } = getBalance().leveling;
+  return Math.floor(xpBase * Math.pow(level, xpExponent));
 }
 
 /** XP the player currently has toward their next level. */
@@ -30,7 +33,7 @@ function applyLevelUps() {
     state.profile.level += 1;
     gained += 1;
   }
-  if (gained) state.statPoints = (state.statPoints || 0) + gained * POINTS_PER_LEVEL;
+  if (gained) state.statPoints = (state.statPoints || 0) + gained * pointsPerLevel();
   return gained;
 }
 

@@ -6,7 +6,9 @@ import './styles/windows.css';
 
 import { loadConfig } from './config.js';
 import { loadFromStorage, enableAutosave } from './game/save.js';
-import { POINTS_PER_LEVEL } from './game/leveling.js';
+import { pointsPerLevel } from './game/leveling.js';
+import { loadBalance } from './game/balance.js';
+import { loadItems } from './game/items-data.js';
 import { WindowManager } from './windows/windowManager.js';
 import { Shell } from './shell/shell.js';
 import { attachCommandLine } from './shell/commandLine.js';
@@ -15,7 +17,13 @@ async function main() {
   // 1. Runtime config (backend address, etc.) — read before anything uses it.
   await loadConfig();
 
-  // 2. Restore or create the save, then keep it persisted.
+  // 2. Game balance (stat growth, costs, drop rates, …) and the item catalogue
+  //    (weapons, modifiers, legendaries, effects). Both depend on config for the
+  //    optional backend override, and must resolve before anything computes
+  //    stats, generates items, or runs save migrations.
+  await Promise.all([loadBalance(), loadItems()]);
+
+  // 3. Restore or create the save, then keep it persisted.
   const { fresh } = loadFromStorage();
   enableAutosave();
 
@@ -27,7 +35,7 @@ async function main() {
       const parts = [];
       if (summary.xp) parts.push(`+${summary.xp} XP`);
       if (summary.levelsGained) {
-        parts.push(`LEVEL UP x${summary.levelsGained}! (+${summary.levelsGained * POINTS_PER_LEVEL} pts)`);
+        parts.push(`LEVEL UP x${summary.levelsGained}! (+${summary.levelsGained * pointsPerLevel()} pts)`);
       }
       for (const [k, v] of Object.entries(summary.resources || {})) {
         if (v) parts.push(`+${v} ${k}`);
