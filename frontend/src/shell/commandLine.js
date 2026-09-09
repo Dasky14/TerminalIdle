@@ -39,7 +39,7 @@ const COMMANDS = [
     usage: [
       'stats                open the stats screen',
       'stats help [stat]    stat growth, or one stat in detail',
-      'stats add <s> <n>    allocate n points (e.g. stats add p.att 5)',
+      'stats add <s> <n>    allocate n points (e.g. stats add strength 5)',
       'stats reset          refund all allocated points',
     ],
     run: (s, args) => {

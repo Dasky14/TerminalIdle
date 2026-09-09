@@ -18,7 +18,7 @@ import { listResources } from '../game/resources.js';
 import { MINIGAMES } from '../minigames/registry.js';
 import { getConfig } from '../config.js';
 import { state } from '../game/state.js';
-import { STAT_DEFS, statValue, formatStat } from '../game/stats.js';
+import { STAT_DEFS, COMBAT_STATS, statValue, formatStat } from '../game/stats.js';
 import {
   EQUIP_SLOTS,
   SLOT_LABELS,
@@ -28,7 +28,7 @@ import {
   locateItem,
 } from '../game/equipment.js';
 import { describeStats, compareItems, itemEffects, itemDisplayName } from '../game/items.js';
-import { combatProfile } from '../game/character.js';
+import { combatProfile, derivedStats, effectiveStats } from '../game/character.js';
 import { salvageYield, getAutoScrap, AUTO_TYPES, AUTO_RARITIES } from '../game/salvage.js';
 import { isUpgradeable, upgradeCost, canUpgrade, itemOrientation, countDuplicates } from '../game/upgrade.js';
 
@@ -82,25 +82,30 @@ export function buildScreen(id, shell) {
     case 'stats': {
       const snap = levelSnapshot();
       const bar = progressBar(snap.progress, 20);
-      // Base = starting value + allocated points. Total = base + equipment.
-      const bonuses = equipmentBonuses();
+      // Two layers: allocatable CHARACTERISTICS, and the COMBAT stats they derive
+      // (plus equipment). derived = from characteristics only; eff = with gear.
+      const derived = derivedStats();
+      const eff = effectiveStats();
       const body = [
         `Level    : ${snap.level}`,
         `XP       : ${snap.xpIntoLevel} / ${snap.xpForNext}`,
         `Progress : ${bar} ${(snap.progress * 100).toFixed(0)}%`,
         `Points   : ${state.statPoints} unspent`,
         '',
-        `${''.padEnd(9)}${'Base'.padStart(7)}${'Total'.padStart(9)}`,
+        'CHARACTERISTICS',
         ...STAT_DEFS.map((d) => {
           const pts = state.stats[d.id] || 0;
-          const base = statValue(d, pts);
-          const total = base + (bonuses[d.id] || 0);
-          return (
-            `${(d.abbr + ':').padEnd(9)}` +
-            `${formatStat(d, base).padStart(7)}` +
-            `${formatStat(d, total).padStart(9)}` +
-            `   (${pts} pts)`
-          );
+          return `  ${(d.name + ':').padEnd(15)}${formatStat(d, statValue(d, pts)).padStart(6)}   (${pts} pts)`;
+        }),
+        '',
+        'COMBAT (used in games)',
+        ...COMBAT_STATS.map((c) => {
+          const total = eff[c.id] || 0;
+          const gear = total - (derived[c.id] || 0);
+          const gearStr = gear > 0.0001
+            ? `   (+${formatStat(c, gear).replace('%', '')}${c.fmt === 'pct' ? '%' : ''} gear)`
+            : '';
+          return `  ${(c.abbr + ':').padEnd(9)}${formatStat(c, total).padStart(7)}${gearStr}`;
         }),
       ];
       // Weapon combat profile: how your equipped weapons attack.
@@ -181,7 +186,7 @@ export function buildScreen(id, shell) {
     case 'equipment': {
       const eq = state.equipment;
       const bonuses = equipmentBonuses();
-      const bonusStr = STAT_DEFS.filter((d) => bonuses[d.id])
+      const bonusStr = COMBAT_STATS.filter((d) => bonuses[d.id])
         .map((d) => `+${formatStat(d, bonuses[d.id])} ${d.abbr}`)
         .join(', ');
       const body = [bonusStr ? `Total bonuses: ${bonusStr}` : 'select a slot to view or change its gear'];

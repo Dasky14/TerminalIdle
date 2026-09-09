@@ -46,6 +46,30 @@ const MIGRATIONS = {
     autoScrap: old.autoScrap || { all: [], byType: {} },
     minigameMeta: old.minigameMeta || {},
   }),
+  // v4 -> v5: rename combat stats to characteristics (two-layer model). The
+  // allocated POINT counts transfer 1:1 (the new per-point derivation reproduces
+  // the same combat values), and Dodge folds into Agility (points summed with
+  // Speed). Equipment/items keep their combat-stat keys, so they're untouched.
+  4: (old) => {
+    const s = old.stats || {};
+    const n = (k) => s[k] || 0;
+    return {
+      ...old,
+      version: 5,
+      stats: {
+        vitality: n('hp'),
+        strength: n('patt'),
+        intelligence: n('matt'),
+        constitution: n('pdef'),
+        spirit: n('mdef'),
+        agility: n('speed') + n('dodge'),
+        perception: n('acc'),
+        critRate: n('critRate'),
+        critDmg: n('critDmg'),
+        luck: n('luck'),
+      },
+    };
+  },
 };
 
 /** Run a (possibly old) save object up to the current SAVE_VERSION. */

@@ -4,17 +4,19 @@ The entire game is stored client-side. There are no accounts. The save lives in
 `localStorage` under the key `til.save.v1` and can be exported/imported as a JSON
 file from **System → Export / Import** (or the `export` / `import` commands).
 
-## Schema (version 4)
+## Schema (version 5)
 
 ```jsonc
 {
-  "version": 4,
+  "version": 5,
   "profile": {
     "level": 1,      // global level
     "xp": 0          // XP banked toward the NEXT level (not cumulative lifetime)
   },
-  "stats": { "patt": 3 },   // allocated POINTS per stat id (v2+; missing = 0)
-  "statPoints": 4,          // unspent stat points (v2+)
+  "stats": { "strength": 3 },  // allocated POINTS per CHARACTERISTIC id (v5;
+                               // vitality/strength/intelligence/constitution/
+                               // spirit/agility/perception/critRate/critDmg/luck)
+  "statPoints": 4,          // unspent characteristic points (v2+)
   "equipment": {            // equipped item per slot, or null (v3+)
     "head": null, "chest": null, "hands": null, "legs": null, "feet": null,
     "weapon1": null, "weapon2": null
@@ -49,6 +51,12 @@ file from **System → Export / Import** (or the `export` / `import` commands).
 - **`profile.xp`** is the XP toward the next level, not lifetime XP. Leveling
   consumes it; the curve is `xpForLevel(level) = floor(100 * level^1.1)` (see
   [`leveling.js`](../frontend/src/game/leveling.js)).
+- **`stats`** holds points per **characteristic** (the allocatable layer). Combat
+  stats (HP, P.Att, …) are *derived* from characteristics via each one's `derive`
+  map in [`stats.js`](../frontend/src/game/stats.js) (e.g. Vitality → HP ×10,
+  Agility → Speed ×1 + Dodge ×2); equipment adds combat stats on top. So `stats`
+  never contains `hp`/`patt`/etc. The v4→v5 migration renamed the old
+  combat-keyed points 1:1 and folded Dodge points into Agility.
 - **`inventory`** items stack by `id`; `name` is display-only. Equipment items
   carry the full item object under `meta` (with `slot`, `stats`, `rarity`, and —
   for upgraded gear — an `upgrade` level shown after the name as `+N`).

@@ -11,16 +11,44 @@ import { itemEffects, weaponAtkType } from './items.js';
 import { getBalance } from './balance.js';
 
 /**
- * The player's effective combat stats: allocation value + equipment bonuses,
- * per stat id. Used to feed minigames (e.g. the dungeon) the real numbers.
+ * The player's characteristic values (the allocatable layer): base + points,
+ * per characteristic id. Not the combat numbers — see derivedStats.
+ * @returns {Record<string, number>}
+ */
+export function characteristicValues() {
+  const out = {};
+  for (const d of STAT_DEFS) out[d.id] = statValue(d, state.stats[d.id] || 0);
+  return out;
+}
+
+/**
+ * Combat stats derived from the player's characteristics ALONE (no equipment).
+ * Each characteristic's `derive` map turns its value into one or more combat
+ * stats (e.g. Vitality -> hp x10, Agility -> speed x1 + dodge x2).
+ * @returns {Record<string, number>}
+ */
+export function derivedStats() {
+  const chars = characteristicValues();
+  const out = {};
+  for (const d of STAT_DEFS) {
+    const v = chars[d.id];
+    for (const [combatId, mult] of Object.entries(d.derive || {})) {
+      out[combatId] = (out[combatId] || 0) + v * mult;
+    }
+  }
+  return out;
+}
+
+/**
+ * The player's effective COMBAT stats: characteristics derived to combat stats
+ * plus equipment bonuses (which are already in combat terms). This is what feeds
+ * minigames (e.g. the dungeon) the real numbers.
  * @returns {Record<string, number>}
  */
 export function effectiveStats() {
+  const out = derivedStats();
   const bonuses = equipmentBonuses();
-  const out = {};
-  for (const d of STAT_DEFS) {
-    out[d.id] = statValue(d, state.stats[d.id] || 0) + (bonuses[d.id] || 0);
-  }
+  for (const [k, v] of Object.entries(bonuses)) out[k] = (out[k] || 0) + v;
   return out;
 }
 

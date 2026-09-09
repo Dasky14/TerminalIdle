@@ -6,7 +6,7 @@
 
 import { emptyStats } from './stats.js';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 /** Build a brand-new save/state object. */
 export function createInitialState() {

@@ -18,7 +18,7 @@ import { getMinigame } from '../minigames/registry.js';
 import { exportSave, importSave, resetSave } from '../game/save.js';
 import { getConfig } from '../config.js';
 import { allocate, resetStats } from '../game/character.js';
-import { STAT_DEFS, statValue, formatStat, findStat } from '../game/stats.js';
+import { STAT_DEFS, statValue, formatStat, findStat, combatStat } from '../game/stats.js';
 import { pointsPerLevel } from '../game/leveling.js';
 import {
   equipByUid,
@@ -357,7 +357,7 @@ export class Shell {
   /** `stats add <stat> <points>` — allocate (or, with a negative, refund). */
   statsAdd(statInput, amountInput) {
     if (!statInput || amountInput == null) {
-      this.term('usage: stats add <stat> <points>   (e.g. stats add p.att 5)', 'is-warn');
+      this.term('usage: stats add <stat> <points>   (e.g. stats add strength 5)', 'is-warn');
       return;
     }
     const res = allocate(statInput, amountInput);
@@ -401,17 +401,20 @@ export class Shell {
       }
       return;
     }
-    this.term(`character stats — you gain ${pointsPerLevel()} points per level.`, 'is-warn');
-    this.term('allocate:  stats add <stat> <points>     (e.g. stats add p.att 5)');
+    this.term(`characteristics — you gain ${pointsPerLevel()} points per level.`, 'is-warn');
+    this.term('allocate:  stats add <stat> <points>     (e.g. stats add strength 5)');
     this.term('remove:    stats add <stat> -<points>    respec: stats reset');
     this.term(`points available: ${state.statPoints}`);
-    this.term('growth per point:');
+    this.term('per point (characteristic -> combat):');
     for (const d of STAT_DEFS) {
-      const key = d.aliases[0].padEnd(10);
+      const key = d.aliases[0].padEnd(13);
       const per = `+${d.perPoint}/pt`.padEnd(8);
-      this.term(`  ${key} ${per} base ${formatStat(d, d.base).padEnd(6)} ${d.name}`);
+      const derive = Object.entries(d.derive || {})
+        .map(([id, m]) => `${(combatStat(id) || {}).abbr || id} x${m}`)
+        .join(', ');
+      this.term(`  ${key} ${per} ${d.name.padEnd(13)} -> ${derive}`);
     }
-    this.term("details:  stats help <stat>   (e.g. stats help dodge)");
+    this.term("details:  stats help <stat>   (e.g. stats help agility)");
   }
 
   // --- Equipment -----------------------------------------------------------

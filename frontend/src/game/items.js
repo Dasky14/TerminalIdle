@@ -19,7 +19,7 @@
 // { critRate: 0.5, critDmg: 1 } modifier at tier 5 gives +2.5% Crit%, +5%
 // CritDmg. See docs/LOOT_RULES.md.
 
-import { STAT_DEFS, formatStat } from './stats.js';
+import { COMBAT_STATS, combatStat, formatStat } from './stats.js';
 import { getBalance } from './balance.js';
 import { getItems } from './items-data.js';
 
@@ -292,7 +292,7 @@ export function effectiveItemStats(item) {
   const stats = (item && item.stats) || {};
   const out = {};
   for (const [k, v] of Object.entries(stats)) {
-    const def = STAT_DEFS.find((d) => d.id === k);
+    const def = combatStat(k);
     const scaled = v * mult;
     out[k] = def && def.fmt === 'pct' ? Math.round(scaled * 10) / 10 : Math.round(scaled);
   }
@@ -319,7 +319,7 @@ export function compareItems(a, b) {
 /** A compact "+5 P.Att, +2 Speed" summary of an item's stats (post-upgrade). */
 export function describeStats(item) {
   const eff = effectiveItemStats(item);
-  return STAT_DEFS.filter((d) => eff[d.id])
+  return COMBAT_STATS.filter((d) => eff[d.id])
     .map((d) => `+${formatStat(d, eff[d.id]).replace('%', '')}${d.fmt === 'pct' ? '%' : ''} ${d.abbr}`)
     .join(', ');
 }
@@ -327,7 +327,7 @@ export function describeStats(item) {
 /** Lines for `help items`: every modifier, its tier names, and per-tier stats. */
 export function modifierHelpLines() {
   const lines = [];
-  const statDef = (id) => STAT_DEFS.find((d) => d.id === id);
+  const statDef = (id) => combatStat(id);
   const perTier = (stats) =>
     Object.entries(stats || {})
       .map(([s, v]) => {
