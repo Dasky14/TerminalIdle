@@ -18,9 +18,10 @@ import { state, emitChange } from './state.js';
 import { addResources } from './resources.js';
 import { listItems, removeItem } from './inventory.js';
 import { effectiveItemStats, itemUpgradeLevel } from './items.js';
-import { STAT_DEFS } from './stats.js';
 import { getBalance } from './balance.js';
 
+// Item stats are COMBAT-stat ids; physical stats yield scrap, magical yield
+// essence, and everything else (HP, Speed, crit, luck…) splits evenly.
 const PHYS_STATS = ['patt', 'pdef'];
 const MAG_STATS = ['matt', 'mdef'];
 
@@ -30,11 +31,10 @@ export function salvageYield(item) {
   let phys = 0;
   let mag = 0;
   let neutral = 0;
-  for (const d of STAT_DEFS) {
-    const v = eff[d.id] || 0;
+  for (const [id, v] of Object.entries(eff)) {
     if (!v) continue;
-    if (PHYS_STATS.includes(d.id)) phys += v;
-    else if (MAG_STATS.includes(d.id)) mag += v;
+    if (PHYS_STATS.includes(id)) phys += v;
+    else if (MAG_STATS.includes(id)) mag += v;
     else neutral += v;
   }
   const total = phys + mag + neutral;
