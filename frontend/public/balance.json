@@ -1,5 +1,17 @@
 {
   "balanceVersion": 1,
+  "characteristics": {
+    "vitality": { "base": 10, "perPoint": 1 },
+    "strength": { "base": 5, "perPoint": 1 },
+    "intelligence": { "base": 5, "perPoint": 1 },
+    "constitution": { "base": 5, "perPoint": 1 },
+    "spirit": { "base": 5, "perPoint": 1 },
+    "agility": { "base": 10, "perPoint": 1 },
+    "perception": { "base": 90, "perPoint": 1 },
+    "critRate": { "base": 5, "perPoint": 0.5 },
+    "critDmg": { "base": 150, "perPoint": 5 },
+    "luck": { "base": 0, "perPoint": 1 }
+  },
   "leveling": {
     "xpBase": 100,
     "xpExponent": 1.1,

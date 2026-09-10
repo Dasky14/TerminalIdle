@@ -1,108 +1,28 @@
 // Central game-balance tunables.
 //
-// GOAL: every balance NUMBER (stat growth, drop rates, costs, multipliers, …)
-// lives in one place so it can be retuned without hunting through the code, and
-// optionally overridden per deployment.
+// GOAL: every balance NUMBER (character growth, drop rates, costs, multipliers,
+// enemy tables, …) lives in ONE place — public/balance.json — so it can be
+// retuned without touching code, and optionally overridden per deployment.
 //
-// LAYERS (each overrides the previous, deep-merged):
-//   1. DEFAULT_BALANCE below — the embedded fallback; the game always works.
-//   2. public/balance.json   — bundled with the build, editable post-build (so a
-//      local host can tweak balance without rebuilding). Copied verbatim into
-//      dist/ like config.json.
-//   3. `${apiBase}/balance`   — if a backend is configured, its balance wins, so
-//      two backends can serve different numbers. (The endpoint is a stub today;
-//      an unreachable/404 backend simply leaves layers 1–2 in effect.)
+// public/balance.json is imported here at build time as the baseline AND
+// re-fetched at runtime by loadBalance(), so post-build edits to dist/balance.json
+// and an optional backend /balance override take effect without a rebuild. There
+// is no second hand-maintained copy in code.
+//   - runtime file:   public/balance.json  (edit dist/balance.json post-build)
+//   - backend wins:   `${apiBase}/balance`  (stub today; unreachable = ignored)
 //
-// SCOPE: this holds tunable CONSTANTS and TABLES, not equations. The *shape* of
-// a formula stays in code (e.g. def/(def+50)); only its parameters live here.
-// See docs/BALANCE.md.
+// SCOPE: tunable CONSTANTS and TABLES, not equations. The *shape* of a formula
+// stays in code (e.g. def/(def+K)); only its parameters live in the JSON. See
+// docs/BALANCE.md.
 //
 // Consumers read values at call time via getBalance(), so a reload/override
 // takes effect without re-importing modules. loadBalance() must resolve before
 // the UI computes anything (main.js awaits it right after loadConfig).
 
 import { getConfig } from '../config.js';
-
-/** The embedded fallback — also the schema/reference for balance.json. */
-export const DEFAULT_BALANCE = {
-  balanceVersion: 1,
-
-  // Global leveling. xpForLevel(level) = floor(xpBase * level^xpExponent).
-  leveling: {
-    xpBase: 100,
-    xpExponent: 1.1,
-    pointsPerLevel: 5,
-  },
-
-  // Equipment upgrades (+N). stats x statMult^N; material cost
-  // baseCost * costGrowth^N, in the item's orientation resource.
-  upgrade: {
-    statMult: 1.2,
-    costGrowth: 1.5,
-    baseCost: 10,
-  },
-
-  // Salvage yield. Base resource units per rarity, before the orientation split
-  // and the small per-stat-total bonus (see game/salvage.js).
-  salvage: {
-    rarityBase: { common: 2, rare: 6, epic: 15, legendary: 40 },
-  },
-
-  // Combat. The weapon multipliers feed character.js combatProfile(); the rest
-  // is the dungeon's tuning and is SENT TO THE IFRAME via the bridge init (the
-  // dungeon is sandboxed and can't import this module). Formula shapes stay in
-  // the dungeon; only these parameters live here.
-  combat: {
-    twoHandMult: 1.3, // one-attack multiplier for a two-handed weapon
-    dualWieldMult: 0.6, // per-weapon multiplier when dual-wielding one-handers
-    shieldDefMult: 1.2, // defense multiplier from an off-hand shield
-    mitigationK: 50, // damage taken = raw * (1 - def/(def + K))
-    minHit: 0.1, // hit chance floor (dodge can't drop you below this)
-    roomsPerFloor: 6, // last room of a floor is the boss
-    floorGrowth: 0.15, // enemy power stats grow this fraction per floor
-    turnMs: 1000, // real-time ms per combat turn
-    chestChance: 0.22, // chance a non-boss room is a treasure chest
-    enemyDropChance: 0.35, // chance a normal enemy drops gear
-    xpPerEnemy: 10, // * floor
-    xpPerBoss: 60, // * floor
-    // Additive per-level growth for enemy RATING stats (power stats scale by
-    // floorGrowth instead). value = base + growth * (floor - 1).
-    flatGrowth: { acc: 1, critRate: 0.2, critDmg: 1, luck: 0 },
-    // Enemy archetypes at base (level-1) stats.
-    enemies: [
-      { name: 'Slime', hp: 40, patt: 6, matt: 0, pdef: 2, mdef: 2, speed: 5, acc: 90, dodge: 10, critRate: 2, critDmg: 150, luck: 1 },
-      { name: 'Goblin', hp: 50, patt: 9, matt: 0, pdef: 3, mdef: 2, speed: 9, acc: 90, dodge: 18, critRate: 5, critDmg: 150, luck: 2 },
-      { name: 'Bat', hp: 30, patt: 7, matt: 0, pdef: 1, mdef: 1, speed: 14, acc: 90, dodge: 30, critRate: 8, critDmg: 150, luck: 3 },
-      { name: 'Skeleton', hp: 60, patt: 11, matt: 0, pdef: 5, mdef: 1, speed: 7, acc: 90, dodge: 12, critRate: 5, critDmg: 150, luck: 1 },
-      { name: 'Acolyte', hp: 45, patt: 0, matt: 12, pdef: 2, mdef: 5, speed: 8, acc: 90, dodge: 15, critRate: 5, critDmg: 150, luck: 2 },
-    ],
-    bosses: [
-      { name: 'Ogre', hp: 120, patt: 16, matt: 0, pdef: 6, mdef: 4, speed: 6, acc: 90, dodge: 12, critRate: 5, critDmg: 160, luck: 3 },
-      { name: 'Dark Mage', hp: 100, patt: 0, matt: 20, pdef: 4, mdef: 8, speed: 9, acc: 90, dodge: 18, critRate: 8, critDmg: 160, luck: 4 },
-      { name: 'Dragonling', hp: 150, patt: 18, matt: 10, pdef: 8, mdef: 6, speed: 10, acc: 90, dodge: 22, critRate: 10, critDmg: 175, luck: 5 },
-    ],
-  },
-
-  // Loot rolling. `weight` is each rarity's base drop chance at luck 0 (they sum
-  // to 1); Luck warps a single roll toward higher rarity by luckK. The number of
-  // name modifiers per rarity (common 0 / rare 1 / epic 2 / legendary unique) is
-  // structural and lives in items.js. The item CATALOGUE (weapons, modifiers,
-  // legendaries, effects) is separate content — see game/items-data.js /
-  // public/items.json.
-  loot: {
-    luckK: 0.009,
-    // When a modifier rolls its tier, each successive tier is this fraction as
-    // likely as the previous (0.5 -> tier weights 100/50/25/12.5…), across the
-    // tiers that modifier defines (its `names` length caps it). See items.js.
-    modifierTierFraction: 0.5,
-    rarities: {
-      common: { weight: 0.749 },
-      rare: { weight: 0.2 },
-      epic: { weight: 0.05 },
-      legendary: { weight: 0.001 },
-    },
-  },
-};
+// The single source of truth for balance. Imported (build-time) as the baseline;
+// re-fetched at runtime by loadBalance() for post-build / backend overrides.
+import DEFAULT_BALANCE from '../../public/balance.json';
 
 // Enemy/boss stat fields sanitized when validating externally-sourced tables.
 const UNIT_FIELDS = ['hp', 'patt', 'matt', 'pdef', 'mdef', 'speed', 'acc', 'dodge', 'critRate', 'critDmg', 'luck'];
@@ -166,8 +86,19 @@ function validate(raw) {
   const LoR = isPlainObject(Lo.rarities) ? Lo.rarities : {};
   const dr = d.loot.rarities;
   const rw = (t) => ({ weight: num(isPlainObject(LoR[t]) ? LoR[t].weight : undefined, dr[t].weight, { min: 0 }) });
+  const Ch = isPlainObject(b.characteristics) ? b.characteristics : {};
+  const dch = isPlainObject(d.characteristics) ? d.characteristics : {};
+  const characteristics = {};
+  for (const id of Object.keys(dch)) {
+    const o = isPlainObject(Ch[id]) ? Ch[id] : {};
+    characteristics[id] = {
+      base: num(o.base, dch[id].base),
+      perPoint: num(o.perPoint, dch[id].perPoint),
+    };
+  }
   return {
     balanceVersion: num(b.balanceVersion, d.balanceVersion, { min: 1 }),
+    characteristics,
     leveling: {
       xpBase: num(L.xpBase, d.leveling.xpBase, { min: 1 }),
       xpExponent: num(L.xpExponent, d.leveling.xpExponent, { min: 0 }),

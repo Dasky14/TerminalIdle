@@ -1,9 +1,11 @@
 # Game balance
 
-Every balance **number** — stat growth, XP curve, drop rates, upgrade costs,
-salvage yields, combat multipliers, enemy tables — lives in one place:
-[`frontend/src/game/balance.js`](../frontend/src/game/balance.js). Tuning the game
-means editing balance, not hunting through feature code.
+Every balance **number** — character growth, XP curve, drop rates, upgrade costs,
+salvage yields, combat multipliers, enemy tables — lives in one file:
+[`frontend/public/balance.json`](../frontend/public/balance.json). Tuning the game
+means editing that JSON, not hunting through feature code. (Item *content* —
+weapons, modifiers, legendaries, effects — is the sibling file
+[`public/items.json`](../frontend/public/items.json); see [LOOT_RULES.md](LOOT_RULES.md).)
 
 ## The one rule: data, not equations
 
@@ -13,13 +15,17 @@ in code. For example, defense mitigation is `raw * (1 - def/(def + K))` — the
 `computeAttack`. This keeps balance a plain, safe JSON document (no expression
 language, no `eval`).
 
-## Three layers (each deep-merges over the previous)
+## Layers (each deep-merges over the previous)
 
-1. **`DEFAULT_BALANCE`** in `balance.js` — the embedded fallback. The game always
-   runs, even fully offline, even if every file below is missing or broken.
-2. **[`public/balance.json`](../frontend/public/balance.json)** — bundled with the
-   build and copied verbatim into `dist/`, so it's editable **after** build (like
-   `config.json`). This is where a local host tweaks balance without rebuilding.
+`public/balance.json` is the single source of truth. `balance.js` **imports** it
+(build time) as the baseline and **re-fetches** it (runtime), so there is no
+second hand-maintained copy in code.
+
+1. **`public/balance.json`, imported** into `balance.js` at build — the baseline
+   bundled into the app, so it always runs.
+2. **`public/balance.json`, re-fetched** at runtime (as `dist/balance.json`), so a
+   deployed build can be edited **without rebuilding** (like `config.json`).
+   Same file as layer 1 unless edited post-build.
 3. **`${apiBase}/balance`** — if a backend is configured (`config.json` `apiBase`),
    its response merges on top and wins. Two backends can therefore serve
    different balance to the same built client. *(The endpoint is a stub today —
@@ -48,23 +54,25 @@ untrusted input — never as code.
 
 | Section | Feeds | Consumed in |
 | --- | --- | --- |
+| `characteristics` | per-characteristic `base` + `perPoint` growth | `stats.js` `statGrowth`/`statValue` |
 | `leveling` | XP curve (`xpBase`,`xpExponent`), `pointsPerLevel` | `leveling.js` |
 | `upgrade` | `statMult`, `costGrowth`, `baseCost` | `items.js` (`itemStatMult`), `upgrade.js` |
 | `salvage` | `rarityBase` yield per rarity | `salvage.js` |
 | `combat` | weapon mults (`twoHandMult`,`dualWieldMult`,`shieldDefMult`); dungeon tuning (`mitigationK`,`minHit`,`floorGrowth`,`roomsPerFloor`,`turnMs`,`chestChance`,`enemyDropChance`,`xpPerEnemy`,`xpPerBoss`,`flatGrowth`); `enemies`/`bosses` tables | `character.js` `combatProfile`; the dungeon iframe |
 | `loot` | rarity drop weights, luck warp (`luckK`), modifier tier bias (`modifierTierFraction`) | `items.js` `rollRarity`/`rarityChances`/`rollTier` |
 
-Not yet externalized (natural next candidate, same pattern): per-stat `base`/
-`perPoint` growth (`stats.js` `STAT_DEFS`).
+Characteristics carry only the *growth numbers* here; their names, number format,
+and the characteristic→combat `derive` map are structural and stay in
+[`stats.js`](../frontend/src/game/stats.js) `STAT_DEFS`.
 
 ## Item catalogue (separate file)
 
 Item **content** — weapons, armour, name modifiers, legendaries, and the effect
-registry — is not balance; it lives in its own layered file,
-[`game/items-data.js`](../frontend/src/game/items-data.js) /
-[`public/items.json`](../frontend/public/items.json) (with an optional backend
-`/items` override), loaded by `loadItems()` and read via `getItems()`. It follows
-the exact same default → file → backend → validate pattern as balance. See
+registry — is not balance; it lives in its own file,
+[`public/items.json`](../frontend/public/items.json) (the single source, imported
++ re-fetched by [`game/items-data.js`](../frontend/src/game/items-data.js), with an
+optional backend `/items` override), read via `getItems()`. It follows the exact
+same import-baseline → runtime-file → backend → validate pattern as balance. See
 [LOOT_RULES.md](LOOT_RULES.md) for how to add items and effects.
 
 ## The sandboxed iframe
@@ -79,9 +87,9 @@ updates.
 
 ## Adding a new knob
 
-1. Add the field (with its default) to `DEFAULT_BALANCE` and mirror it in
-   `public/balance.json`.
-2. Clamp/validate it in `validate()`.
+1. Add the field to `public/balance.json` (this is both the baseline import and
+   the runtime file — one edit).
+2. Clamp/validate it in `validate()` in `balance.js`.
 3. Read it via `getBalance().<section>.<key>` at the point of use — remove the
    hard-coded literal there.
 4. If a combat/iframe value: it already ships in `init.balance`; read it in the

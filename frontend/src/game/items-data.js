@@ -1,96 +1,30 @@
-// The item CATALOGUE — the data-driven content behind loot generation.
+// The item CATALOGUE loader — the item CONTENT lives in ONE place:
+// public/items.json. Edit that file to add/adjust weapons, armour, name
+// modifiers, legendaries, and effects. There is no second copy in code.
 //
-// Add weapons, armour, name modifiers, legendaries, and effects by editing this
-// (or, without rebuilding, public/items.json — and a backend can override it,
-// same three-layer pattern as game/balance.js). Loaded once at startup by
-// loadItems(); consumers read via getItems() at call time.
+// public/items.json is imported here at build time (so there's always a valid
+// baseline) AND re-fetched at runtime by loadItems(), so post-build edits to
+// dist/items.json — and an optional backend /items override — take effect
+// without a rebuild. Consumers read the active catalogue via getItems().
 //
 // EFFECTS: `effects` is a registry (id -> { desc, value? }). ANY item can carry
 // an effect by listing its id in its `effects` array (a bare id string, or
 // { id, value?, desc? } to override the registry). The effect's combat BEHAVIOUR
 // is implemented by id in the dungeon (frontend/public/minigames/dungeon) — so
-// reusing an existing effect on a new item is a pure data edit here, while a
+// reusing an existing effect on a new item is a pure data edit, while a
 // brand-new effect id also needs a hook added there. See docs/LOOT_RULES.md.
 //
-// Balance NUMBERS that aren't item content (drop rates, luck) live in
-// game/balance.js instead; item stat values live here because they define the
-// item.
+// Balance NUMBERS that aren't item content (drop rates, luck, the modifier tier
+// bias, character growth) live in game/balance.js / public/balance.json instead.
 
 import { getConfig } from '../config.js';
-
-/** The embedded fallback catalogue (also the schema/reference for items.json). */
-export const DEFAULT_ITEMS = {
-  // Attacking weapons need `atkType` ('physical'|'magical'); weapons use slot
-  // 'weapon' with `hands` 1 / 2 / 'off'. Two-handed base attack is ~2x a 1H's
-  // (see docs/LOOT_RULES.md).
-  bases: [
-    { key: 'sword', name: 'Sword', slot: 'weapon', hands: 1, atkType: 'physical', stats: { patt: 6 } },
-    { key: 'dagger', name: 'Dagger', slot: 'weapon', hands: 1, atkType: 'physical', stats: { patt: 4, speed: 2 } },
-    { key: 'wand', name: 'Wand', slot: 'weapon', hands: 1, atkType: 'magical', stats: { matt: 6 } },
-    { key: 'greatsword', name: 'Greatsword', slot: 'weapon', hands: 2, atkType: 'physical', stats: { patt: 12 } },
-    { key: 'staff', name: 'Staff', slot: 'weapon', hands: 2, atkType: 'magical', stats: { matt: 12 } },
-    { key: 'shield', name: 'Shield', slot: 'weapon', hands: 'off', stats: { pdef: 5, hp: 20 } },
-    { key: 'helmet', name: 'Helmet', slot: 'head', stats: { pdef: 2, mdef: 2 } },
-    { key: 'chestplate', name: 'Chestplate', slot: 'chest', stats: { pdef: 4, hp: 30 } },
-    { key: 'gauntlets', name: 'Gauntlets', slot: 'hands', stats: { patt: 2, pdef: 1 } },
-    { key: 'greaves', name: 'Greaves', slot: 'legs', stats: { pdef: 3 } },
-    { key: 'boots', name: 'Boots', slot: 'feet', stats: { speed: 3 } },
-  ],
-  // Name modifiers. Each is keyed by an id and defines:
-  //   weight  relative chance of rolling THIS modifier (vs the others in its
-  //           pool) when the item gets a prefix/suffix.
-  //   names   one name per tier; its LENGTH is the modifier's max tier (nothing
-  //           rolls beyond it). Which tier you get is a weighted roll biased to
-  //           low tiers by balance `loot.modifierTierFraction`.
-  //   stats   the stat bonus PER TIER; tier N grants N x these (so a { critRate:
-  //           0.5, critDmg: 1 } modifier at tier 5 gives +2.5% Crit%, +5% CritDmg).
-  // The name must read as a prefix (goes before the item) here / a suffix (after)
-  // in `suffixes`, so the modifier type is clear from the name.
-  prefixes: {
-    hp: { weight: 100, names: ['Hearty', 'Robust', 'Titanic'], stats: { hp: 10 } },
-    patt: { weight: 100, names: ['Sharp', 'Keen', 'Brutal'], stats: { patt: 2 } },
-    matt: { weight: 100, names: ['Mystic', 'Arcane', 'Eldritch'], stats: { matt: 2 } },
-    pdef: { weight: 100, names: ['Sturdy', 'Plated', 'Impregnable'], stats: { pdef: 1 } },
-    mdef: { weight: 100, names: ['Warded', 'Runed', 'Hallowed'], stats: { mdef: 1 } },
-    speed: { weight: 100, names: ['Swift', 'Fleet', 'Blurring'], stats: { speed: 1 } },
-    acc: { weight: 100, names: ['Precise', 'Keeneye', 'Unerring'], stats: { acc: 1 } },
-    dodge: { weight: 100, names: ['Nimble', 'Evasive', 'Ghostly'], stats: { dodge: 0.5 } },
-    critRate: { weight: 100, names: ['Deadly', 'Lethal', 'Murderous'], stats: { critRate: 0.5 } },
-    critDmg: { weight: 100, names: ['Vicious', 'Savage', 'Cataclysmic'], stats: { critDmg: 5 } },
-    luck: { weight: 100, names: ['Lucky', 'Fortunate', 'Blessed'], stats: { luck: 1 } },
-  },
-  suffixes: {
-    hp: { weight: 100, names: ['of Vigor', 'of Vitality', 'of the Colossus'], stats: { hp: 10 } },
-    patt: { weight: 100, names: ['of Might', 'of Power', 'of Devastation'], stats: { patt: 2 } },
-    matt: { weight: 100, names: ['of Magic', 'of Sorcery', 'of the Archmage'], stats: { matt: 2 } },
-    pdef: { weight: 100, names: ['of Protection', 'of the Bulwark', 'of the Aegis'], stats: { pdef: 1 } },
-    mdef: { weight: 100, names: ['of Warding', 'of Spellguard', 'of the Sanctum'], stats: { mdef: 1 } },
-    speed: { weight: 100, names: ['of Haste', 'of Alacrity', 'of the Gale'], stats: { speed: 1 } },
-    acc: { weight: 100, names: ['of Aim', 'of Precision', 'of the Hawk'], stats: { acc: 1 } },
-    dodge: { weight: 100, names: ['of Evasion', 'of the Fox', 'of Shadows'], stats: { dodge: 0.5 } },
-    critRate: { weight: 100, names: ['of Striking', 'of the Assassin', 'of Slaughter'], stats: { critRate: 0.5 } },
-    critDmg: { weight: 100, names: ['of Ruin', 'of Carnage', 'of Annihilation'], stats: { critDmg: 5 } },
-    luck: { weight: 100, names: ['of Luck', 'of Fortune', 'of Destiny'], stats: { luck: 1 } },
-  },
-  // Named legendaries: fixed stats + effects (by id). Add one and it can drop
-  // like any other legendary. Keep at least one entry.
-  legendaries: [
-    { key: 'excalibur', name: 'Excalibur', slot: 'weapon', hands: 2, atkType: 'physical', stats: { patt: 25, critRate: 10 }, effects: ['ignoreDefense'] },
-    { key: 'aegis', name: 'Aegis of the Ancients', slot: 'weapon', hands: 'off', stats: { pdef: 15, mdef: 15, hp: 50 }, effects: ['firstHitShield'] },
-    { key: 'sandals', name: "Hermes' Sandals", slot: 'feet', stats: { speed: 15, acc: 5 }, effects: ['alwaysFirst'] },
-  ],
-  // Effect registry: id -> { desc, value? }. `value` is the parameter the combat
-  // hook reads (e.g. fraction of defense ignored). Implemented by id in the dungeon.
-  effects: {
-    ignoreDefense: { value: 0.3, desc: 'Radiant Edge — ignores 30% of enemy defense.' },
-    firstHitShield: { desc: 'Bulwark — negates the first hit each battle.' },
-    alwaysFirst: { desc: 'Fleetfooted — you always act first.' },
-  },
-};
+// The single source of truth for item content. Imported (build-time) as the
+// baseline; re-fetched at runtime for post-build / backend overrides.
+import DEFAULT_ITEMS from '../../public/items.json';
 
 let current = clone(DEFAULT_ITEMS);
 
-/** Synchronous access to the active catalogue (defaults until loadItems runs). */
+/** Synchronous access to the active catalogue (baseline until loadItems runs). */
 export function getItems() {
   return current;
 }
@@ -156,6 +90,12 @@ function validEffects(over, def) {
   return Object.keys(out).length ? out : clone(def);
 }
 
+/**
+ * Rebuild a known-good catalogue from `raw`, keeping valid entries and falling
+ * back per-section to the bundled items.json (DEFAULT_ITEMS) when a section is
+ * missing or unusable. This is the trust boundary for a hand-edited items.json
+ * and any backend /items response.
+ */
 function validate(raw) {
   const d = DEFAULT_ITEMS;
   const b = isPlainObject(raw) ? raw : {};
@@ -169,20 +109,23 @@ function validate(raw) {
 }
 
 /**
- * Resolve the active item catalogue: embedded default -> bundled items.json ->
- * optional backend /items. Always resolves (falls back cleanly). Call once at
- * startup, before anything generates or renders items.
+ * Resolve the active item catalogue: the bundled items.json, then an optional
+ * backend /items override merged on top, then validated. Always resolves (falls
+ * back to the build-time items.json). Call once at startup, before anything
+ * generates or renders items.
  */
 export async function loadItems() {
   let raw = clone(DEFAULT_ITEMS);
 
+  // Runtime copy of items.json (lets a deployed dist/items.json be edited without
+  // a rebuild). Same file as the build-time import unless edited post-build.
   try {
     const url = `${import.meta.env.BASE_URL}items.json`;
     const res = await fetch(url, { cache: 'no-store' });
     if (res.ok) raw = deepMerge(raw, await res.json());
     else if (res.status !== 404) throw new Error(`items.json HTTP ${res.status}`);
   } catch (err) {
-    console.warn('[items] Using built-in defaults for items.json:', err.message);
+    console.warn('[items] Using build-time items.json:', err.message);
   }
 
   const { apiBase } = getConfig();

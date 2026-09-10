@@ -35,10 +35,10 @@ flowchart TD
   that mutates state calls `emitChange()`; the shell re-renders live screens.
 - **`leveling.js` / `inventory.js` / `resources.js`** — typed helpers that own
   their slice of state.
-- **`balance.js`** — the single home for every balance number (stat growth, XP
-  curve, drop rates, costs, combat multipliers, enemy tables). Loaded at boot
-  from an embedded default → bundled `balance.json` → optional backend override,
-  validated on the way in. See [BALANCE.md](BALANCE.md).
+- **`balance.js`** — the loader for every balance number (character growth, XP
+  curve, drop rates, costs, combat multipliers, enemy tables), which live in
+  `public/balance.json` (imported as the baseline, re-fetched at runtime, backend
+  can override), validated on the way in. See [BALANCE.md](BALANCE.md).
 - **`rewards.js`** — `applyReward({xp, resources, items})` fans a minigame reward
   out to the helpers above. Equipment drops (`{roll:'equipment'}`) roll a random
   item biased by Luck, then either enter the inventory or are auto-salvaged.

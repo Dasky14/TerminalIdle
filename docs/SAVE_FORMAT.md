@@ -4,11 +4,11 @@ The entire game is stored client-side. There are no accounts. The save lives in
 `localStorage` under the key `til.save.v1` and can be exported/imported as a JSON
 file from **System → Export / Import** (or the `export` / `import` commands).
 
-## Schema (version 5)
+## Schema (version 6)
 
 ```jsonc
 {
-  "version": 5,
+  "version": 6,
   "profile": {
     "level": 1,      // global level
     "xp": 0          // XP banked toward the NEXT level (not cumulative lifetime)
@@ -23,7 +23,14 @@ file from **System → Export / Import** (or the `export` / `import` commands).
   },
   "inventory": [
     { "id": "gear", "name": "Gear", "qty": 3 },  // stacked by id
-    { "id": "it-abc", "name": "Keen Sword", "qty": 1, "meta": { /* item */ } }
+    // Equipment items store a RECIPE (v6) under `meta` — base key, rarity, slot,
+    // upgrade level, and modifier refs {id,kind,tier}. Name & stats are NOT
+    // stored; they're computed live from items.json/balance.json (so editing the
+    // catalogue rebalances owned gear). `name` on the entry is a display cache.
+    { "id": "it-abc", "name": "Keen Sword", "qty": 1,
+      "meta": { "uid": "it-abc", "base": "sword", "rarity": "rare", "slot": "weapon",
+                "hands": 1, "atkType": "physical", "upgrade": 1,
+                "mods": [ { "id": "patt", "kind": "prefix", "tier": 2 } ] } }
   ],
   "resources": {
     "scrap": 12,     // flat name → amount map; salvaging physical gear
@@ -57,9 +64,13 @@ file from **System → Export / Import** (or the `export` / `import` commands).
   Agility → Speed ×1 + Dodge ×2); equipment adds combat stats on top. So `stats`
   never contains `hp`/`patt`/etc. The v4→v5 migration renamed the old
   combat-keyed points 1:1 and folded Dodge points into Agility.
-- **`inventory`** items stack by `id`; `name` is display-only. Equipment items
-  carry the full item object under `meta` (with `slot`, `stats`, `rarity`, and —
-  for upgraded gear — an `upgrade` level shown after the name as `+N`).
+- **`inventory`** items stack by `id`; the entry `name` is a display cache.
+  Equipment items carry a **recipe** under `meta` (v6): `base` key, `rarity`,
+  `slot`/`hands`/`atkType` (identity), `upgrade` level, and modifier refs
+  `{id, kind, tier}`. Name and stats are **not** stored — they're computed live
+  from `items.json`/`balance.json` (`itemName` / `itemStats` in items.js), so
+  editing the catalogue retroactively rebalances owned gear. The v5→v6 migration
+  stripped the old baked stats/name, keeping the recipe.
 - **`resources`** is a flat map; values are clamped at ≥ 0. `scrap` and
   `essence` come from salvaging gear (see [`salvage.js`](../frontend/src/game/salvage.js))
   and are spent on weapon upgrades ([`upgrade.js`](../frontend/src/game/upgrade.js)).

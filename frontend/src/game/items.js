@@ -106,28 +106,38 @@ export function rarityChances(luck = 0) {
   return out;
 }
 
+// --- catalogue lookups -----------------------------------------------------
+/** The base/legendary definition for an item, from the live catalogue. */
+function baseDef(item) {
+  const cat = getItems();
+  return cat.bases.find((b) => b.key === item.base) || cat.legendaries.find((l) => l.key === item.base) || null;
+}
+/** A modifier definition by kind + id, from the live catalogue. */
+function modDef(kind, id) {
+  const pool = kind === 'prefix' ? getItems().prefixes : getItems().suffixes;
+  return pool ? pool[id] : undefined;
+}
+
+// --- generation (produces a RECIPE, not baked stats) -----------------------
 /**
- * Roll one modifier from a pool ('prefix' | 'suffix'). Picks a modifier by
- * weight, then a tier by rollTier, and scales the per-tier stats by the tier.
- * `forbidStat` excludes modifiers that grant that stat (the 2H single-type
- * rule). Returns null if nothing in the pool is eligible.
+ * Roll one modifier RECIPE ({ id, kind, tier }) from a pool. Picks by weight,
+ * then a tier by rollTier. `forbidStat` excludes modifiers that grant that stat
+ * (the 2H single-type rule). Returns null if nothing in the pool is eligible.
+ * The stats/name are NOT baked — they're read from the catalogue at compute time.
  */
-function makeMod(kind, forbidStat) {
+function rollModRecipe(kind, forbidStat) {
   const poolMap = kind === 'prefix' ? getItems().prefixes : getItems().suffixes;
   let entries = Object.entries(poolMap || {});
   if (forbidStat) entries = entries.filter(([, d]) => !(d.stats && d.stats[forbidStat]));
   if (!entries.length) return null;
   const [id, def] = pickWeighted(entries);
-  const tier = rollTier(def.names.length);
-  const stats = {};
-  for (const [s, v] of Object.entries(def.stats || {})) stats[s] = v * tier;
-  return { id, kind, tier, name: def.names[tier - 1], stats };
+  return { id, kind, tier: rollTier(def.names.length) };
 }
 
 function rollMods(rarity, forbidStat) {
   const out = [];
   const add = (kind) => {
-    const m = makeMod(kind, forbidStat);
+    const m = rollModRecipe(kind, forbidStat);
     if (m) out.push(m);
   };
   if (rarity === 'rare') add(Math.random() < 0.5 ? 'prefix' : 'suffix');
@@ -139,130 +149,117 @@ function rollMods(rarity, forbidStat) {
 }
 
 /**
+ * Generate an item as a RECIPE: base key, rarity, slot/hands/atkType (identity),
+ * upgrade level, and modifier refs ({ id, kind, tier }). Its name and stats are
+ * NOT baked — they're computed live from the catalogue (itemName / itemStats),
+ * so editing items.json / balance.json retroactively rebalances existing items.
+ * Pass { rarity } to force one, or { luck } to bias the roll.
+ */
+export function generateItem(opts = {}) {
+  const rarity = opts.rarity || rollRarity(opts.luck || 0);
+  const cat = getItems();
+
+  if (rarity === 'legendary') {
+    const l = opts.legendary || randOf(cat.legendaries);
+    const item = { uid: newUid(), base: l.key, rarity: 'legendary', slot: l.slot, upgrade: 0, mods: [] };
+    if (l.hands != null) item.hands = l.hands;
+    if (l.atkType) item.atkType = l.atkType;
+    return item;
+  }
+
+  const base = randOf(cat.bases);
+  const isWeapon = base.slot === 'weapon';
+  const twoHanded = base.hands === 2;
+  // LOOT RULES (docs/LOOT_RULES.md): a two-handed weapon is single attack-type —
+  // it never rolls a modifier granting the OPPOSITE attack stat. (Its ~2x "extra
+  // stats" is applied when stats are computed; see itemStats.)
+  const forbidStat = isWeapon && twoHanded ? (base.atkType === 'physical' ? 'matt' : 'patt') : null;
+  const item = { uid: newUid(), base: base.key, rarity, slot: base.slot, upgrade: 0, mods: rollMods(rarity, forbidStat) };
+  if (base.hands != null) item.hands = base.hands;
+  if (isWeapon && base.atkType) item.atkType = base.atkType;
+  return item;
+}
+
+// --- live resolution (computed from the catalogue) -------------------------
+/**
+ * An item's PRE-UPGRADE stats, computed live: base stats + each modifier's
+ * per-tier stats x its rolled tier. Two-handed weapons double their MODIFIER
+ * contributions (their base attack is already ~2x a 1H's). Unknown base/modifier
+ * ids (e.g. removed from the catalogue) simply contribute nothing.
+ */
+export function itemStats(item) {
+  if (!item) return {};
+  const twoHanded = item.slot === 'weapon' && item.hands === 2;
+  const out = {};
+  const add = (map, mult) => {
+    for (const [s, v] of Object.entries(map || {})) out[s] = (out[s] || 0) + v * mult;
+  };
+  const def = baseDef(item);
+  if (def) add(def.stats, 1);
+  for (const m of item.mods || []) {
+    const md = modDef(m.kind, m.id);
+    if (md) add(md.stats, (m.tier || 1) * (twoHanded ? 2 : 1));
+  }
+  return out;
+}
+
+/**
+ * The item's display name, computed live: prefix + base + suffix (a legendary is
+ * just its own name). Missing catalogue entries are skipped.
+ */
+export function itemName(item) {
+  if (!item) return '';
+  const def = baseDef(item);
+  const baseName = def ? def.name : item.base;
+  if (item.rarity === 'legendary') return baseName;
+  let prefix;
+  let suffix;
+  for (const m of item.mods || []) {
+    const md = modDef(m.kind, m.id);
+    if (!md || !md.names || !md.names.length) continue;
+    const nm = md.names[Math.min((m.tier || 1) - 1, md.names.length - 1)];
+    if (m.kind === 'prefix') prefix = nm;
+    else suffix = nm;
+  }
+  return [prefix, baseName, suffix].filter(Boolean).join(' ');
+}
+
+/**
  * The damage type of an attacking weapon ('physical' | 'magical'), from the
- * item's `atkType`, falling back to its base definition, then to its stats
- * (so items saved before atkType existed still resolve). Off-hand shields never
- * attack; callers shouldn't ask, but this returns 'physical' for safety.
+ * item's stored atkType, falling back to its base definition, then its stats.
  */
 export function weaponAtkType(item) {
   if (!item) return 'physical';
   if (item.atkType) return item.atkType;
-  const cat = getItems();
-  const def = cat.bases.find((b) => b.key === item.base) || cat.legendaries.find((l) => l.key === item.base);
+  const def = baseDef(item);
   if (def && def.atkType) return def.atkType;
-  const s = (def && def.stats) || item.stats || {};
+  const s = (def && def.stats) || {};
   return (s.matt || 0) > (s.patt || 0) ? 'magical' : 'physical';
 }
 
-function mergeStats(base, mods) {
-  const stats = { ...base };
-  for (const m of mods) for (const [s, v] of Object.entries(m.stats || {})) stats[s] = (stats[s] || 0) + v;
-  return stats;
-}
-
-function buildName(baseName, mods) {
-  const prefix = mods.find((m) => m.kind === 'prefix');
-  const suffix = mods.find((m) => m.kind === 'suffix');
-  return [prefix && prefix.name, baseName, suffix && suffix.name].filter(Boolean).join(' ');
-}
-
-function instantiateLegendary(def) {
-  const l = def || randOf(getItems().legendaries);
-  const item = {
-    uid: newUid(),
-    base: l.key,
-    name: l.name,
-    slot: l.slot,
-    hands: l.hands,
-    rarity: 'legendary',
-    mods: [],
-    stats: { ...l.stats },
-    // Store effect refs as authored (ids or {id,value?}); itemEffects resolves
-    // them against the registry at read time.
-    effects: (l.effects || []).map((e) => (typeof e === 'string' ? e : { ...e })),
-  };
-  if (l.atkType) item.atkType = l.atkType;
-  return item;
-}
-
 /**
- * Generate an item. Pass { rarity } to force one, or { luck } to bias the roll.
- * @returns an item instance.
- */
-export function generateItem(opts = {}) {
-  const rarity = opts.rarity || rollRarity(opts.luck || 0);
-  if (rarity === 'legendary') return instantiateLegendary(opts.legendary);
-
-  const base = randOf(getItems().bases);
-  const isWeapon = base.slot === 'weapon';
-  const twoHanded = base.hands === 2;
-
-  // LOOT RULES (see docs/LOOT_RULES.md):
-  //  - A two-handed weapon is single attack-type: it never rolls a modifier that
-  //    grants the OPPOSITE attack stat (a greatsword won't get M.Att, a staff
-  //    won't get P.Att). One-handed weapons and armour may roll anything.
-  const forbidStat = isWeapon && twoHanded ? (base.atkType === 'physical' ? 'matt' : 'patt') : null;
-  let mods = rollMods(rarity, forbidStat);
-  //  - A two-handed weapon carries ~2x the "extra stats" of a 1H (it uses both
-  //    weapon slots), so every stat its modifiers grant is doubled.
-  if (isWeapon && twoHanded) {
-    mods = mods.map((m) => {
-      const stats = {};
-      for (const [s, v] of Object.entries(m.stats)) stats[s] = v * 2;
-      return { ...m, stats };
-    });
-  }
-
-  const item = {
-    uid: newUid(),
-    base: base.key,
-    name: buildName(base.name, mods),
-    slot: base.slot,
-    hands: base.hands,
-    rarity,
-    mods: mods.map((m) => ({ id: m.id, kind: m.kind, tier: m.tier, name: m.name, stats: { ...m.stats } })),
-    stats: mergeStats(base.stats, mods),
-  };
-  if (isWeapon && base.atkType) item.atkType = base.atkType;
-  // A base item may grant effects (by id) to every instance it rolls — the same
-  // effect system legendaries use. itemEffects resolves these at read time.
-  if (Array.isArray(base.effects) && base.effects.length) {
-    item.effects = base.effects.map((e) => (typeof e === 'string' ? e : { ...e }));
-  }
-  return item;
-}
-
-/**
- * The resolved effects of an item as structured descriptors. Each source ref is
- * a bare id string or an object ({ id, value?, desc? }); it's resolved against
- * the effect registry (items-data.js `effects`) so a ref can be just an id.
- * Reads the instance's `effects`, falling back to the item's base/legendary
- * definition by key — so old saves (which stored full effect objects) and new
- * id-only refs both work.
+ * The resolved effects of an item, computed from the catalogue (base/legendary
+ * `effects` by base key) via the effect registry. An item may also carry its own
+ * `effects` refs (older saves / custom); those take precedence.
  * @returns {Array<{id:string,value?:number,desc:string}>}
  */
 export function itemEffects(item) {
   if (!item) return [];
   const cat = getItems();
   const registry = cat.effects || {};
-  const resolve = (e) => {
-    const id = typeof e === 'string' ? e : e && e.id;
-    if (!id) return null;
-    const reg = registry[id] || {};
-    const obj = typeof e === 'object' && e ? e : {};
-    const value = obj.value != null ? obj.value : reg.value;
-    const desc = obj.desc || reg.desc || id;
-    return value != null ? { id, value, desc } : { id, desc };
-  };
-
-  let refs = Array.isArray(item.effects) ? item.effects : null;
-  if (!refs) {
-    // Fall back to the definition by base key (covers items that don't carry
-    // their own effects, e.g. an older save missing the field).
-    const def = cat.legendaries.find((l) => l.key === item.base) || cat.bases.find((b) => b.key === item.base);
-    if (def && Array.isArray(def.effects)) refs = def.effects;
-  }
-  return (refs || []).map(resolve).filter(Boolean);
+  const def = cat.legendaries.find((l) => l.key === item.base) || cat.bases.find((b) => b.key === item.base);
+  const refs = Array.isArray(item.effects) ? item.effects : def && Array.isArray(def.effects) ? def.effects : [];
+  return refs
+    .map((e) => {
+      const id = typeof e === 'string' ? e : e && e.id;
+      if (!id) return null;
+      const reg = registry[id] || {};
+      const obj = typeof e === 'object' && e ? e : {};
+      const value = obj.value != null ? obj.value : reg.value;
+      const desc = obj.desc || reg.desc || id;
+      return value != null ? { id, value, desc } : { id, desc };
+    })
+    .filter(Boolean);
 }
 
 // --- Upgrades --------------------------------------------------------------
@@ -283,15 +280,14 @@ export function itemStatMult(item) {
 }
 
 /**
- * An item's stats after its upgrade multiplier, rounded per stat format
- * (integers for int stats, one decimal for percentages). This is what combat
- * and the equipment screens should read — `item.stats` is the un-upgraded base.
+ * An item's effective combat stats: its live catalogue stats (itemStats) times
+ * the upgrade multiplier, rounded per stat format (integers for int stats, one
+ * decimal for percentages). This is what combat and the equipment screens read.
  */
 export function effectiveItemStats(item) {
   const mult = itemStatMult(item);
-  const stats = (item && item.stats) || {};
   const out = {};
-  for (const [k, v] of Object.entries(stats)) {
+  for (const [k, v] of Object.entries(itemStats(item))) {
     const def = combatStat(k);
     const scaled = v * mult;
     out[k] = def && def.fmt === 'pct' ? Math.round(scaled * 10) / 10 : Math.round(scaled);
@@ -302,7 +298,8 @@ export function effectiveItemStats(item) {
 /** Display name including the "+N" upgrade suffix. */
 export function itemDisplayName(item) {
   const lvl = itemUpgradeLevel(item);
-  return lvl ? `${item.name} +${lvl}` : item.name;
+  const nm = itemName(item);
+  return lvl ? `${nm} +${lvl}` : nm;
 }
 
 /** Rarity ordering for sorting (best first). */
@@ -313,7 +310,7 @@ export function compareItems(a, b) {
   const ra = RARITY_RANK[a.rarity] ?? 9;
   const rb = RARITY_RANK[b.rarity] ?? 9;
   if (ra !== rb) return ra - rb;
-  return a.name.localeCompare(b.name);
+  return itemName(a).localeCompare(itemName(b));
 }
 
 /** A compact "+5 P.Att, +2 Speed" summary of an item's stats (post-upgrade). */

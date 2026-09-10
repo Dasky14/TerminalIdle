@@ -18,7 +18,7 @@ import { listResources } from '../game/resources.js';
 import { MINIGAMES } from '../minigames/registry.js';
 import { getConfig } from '../config.js';
 import { state } from '../game/state.js';
-import { STAT_DEFS, COMBAT_STATS, statValue, formatStat } from '../game/stats.js';
+import { STAT_DEFS, COMBAT_STATS, statValue, statGrowth, formatStat } from '../game/stats.js';
 import {
   EQUIP_SLOTS,
   SLOT_LABELS,
@@ -129,7 +129,7 @@ export function buildScreen(id, shell) {
     case 'stats-allocate': {
       const items = STAT_DEFS.map((d) => ({
         label: d.abbr,
-        hint: `+${d.perPoint}/pt · type "${d.aliases[0]}"`,
+        hint: `+${statGrowth(d).perPoint}/pt · type "${d.aliases[0]}"`,
         action: (s) => s.prefillAllocate(d.aliases[0]),
       }));
       items.push({ label: 'Reset (respec)', hint: 'refund all points', action: (s) => s.statsReset() });

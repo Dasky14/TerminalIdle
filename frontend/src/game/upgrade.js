@@ -19,7 +19,7 @@
 import { emitChange } from './state.js';
 import { getResource, addResource } from './resources.js';
 import { listItems, removeItem } from './inventory.js';
-import { itemUpgradeLevel } from './items.js';
+import { itemUpgradeLevel, itemStats } from './items.js';
 import { getBalance } from './balance.js';
 
 /** Any equipment item (has an equip slot) can be upgraded. */
@@ -27,9 +27,9 @@ export function isUpgradeable(item) {
   return !!item && !!item.slot;
 }
 
-/** 'physical' (scrap) or 'magical' (essence), from the item's base stats. */
+/** 'physical' (scrap) or 'magical' (essence), from the item's live stats. */
 export function itemOrientation(item) {
-  const s = (item && item.stats) || {};
+  const s = itemStats(item);
   const phys = (s.patt || 0) + (s.pdef || 0);
   const mag = (s.matt || 0) + (s.mdef || 0);
   return mag > phys ? 'magical' : 'physical';

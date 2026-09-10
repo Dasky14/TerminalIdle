@@ -11,7 +11,7 @@
 
 import { state, emitChange } from './state.js';
 import { addItem, removeItem, listItems } from './inventory.js';
-import { compareItems, effectiveItemStats } from './items.js';
+import { compareItems, effectiveItemStats, itemName } from './items.js';
 
 export const ARMOUR_SLOTS = ['head', 'chest', 'hands', 'legs', 'feet'];
 export const WEAPON_SLOTS = ['weapon1', 'weapon2'];
@@ -49,7 +49,7 @@ export function listEquippable() {
 export function findEquippableByName(query) {
   const q = String(query || '').toLowerCase().trim();
   if (!q) return undefined;
-  return listEquippable().find((it) => it.name.toLowerCase().includes(q));
+  return listEquippable().find((it) => itemName(it).toLowerCase().includes(q));
 }
 
 /** Whether an item can go into a given slot. */
@@ -67,7 +67,7 @@ export function listForSlot(slot) {
 }
 
 function toInventory(item) {
-  addItem({ id: item.uid, name: item.name, qty: 1, meta: item });
+  addItem({ id: item.uid, name: itemName(item), qty: 1, meta: item });
 }
 
 /** Equip an item (must currently be in the inventory). */

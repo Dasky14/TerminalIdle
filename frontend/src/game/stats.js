@@ -19,8 +19,14 @@
 //
 // If a characteristic ever needs a non-linear curve, give its def a
 // `curve(points)` function and statValue() will use it instead of the linear default.
+//
+// The growth numbers (base value + gain per point) are BALANCE and live in
+// public/balance.json (`characteristics`), read here via statGrowth(). So a
+// characteristic's value = balance base + balance perPoint * allocated points.
 
-/** @typedef {{id:string,name:string,abbr:string,aliases:string[],base:number,perPoint:number,fmt:'int'|'pct',derive:Record<string,number>,help?:string[],curve?:(points:number)=>number}} StatDef */
+import { getBalance } from './balance.js';
+
+/** @typedef {{id:string,name:string,abbr:string,aliases:string[],fmt:'int'|'pct',derive:Record<string,number>,help?:string[],curve?:(points:number)=>number}} StatDef */
 
 // HELP COUPLING: each characteristic's `help` lines are printed verbatim by
 // `stats help <stat>` (see shell/shell.js statsHelp). Some restate COMBAT
@@ -39,16 +45,20 @@
 // applied in character.js (derivedStats).
 
 /** Ordered characteristic list. `aliases[0]` is the canonical command key. @type {StatDef[]} */
+// NOTE: `base` and `perPoint` (the growth numbers) are NOT here — they're
+// balance and live in public/balance.json (`characteristics`), read via
+// statGrowth(). These defs hold only the structural bits: id, display, aliases,
+// number format, the characteristic->combat `derive` map, and help text.
 export const STAT_DEFS = [
   {
     id: 'vitality', name: 'Vitality', abbr: 'Vit', aliases: ['vitality', 'vit', 'hp'],
-    base: 10, perPoint: 1, fmt: 'int', derive: { hp: 10 },
+    fmt: 'int', derive: { hp: 10 },
     help: ['Your endurance and life force. Each point adds +10 HP in combat.',
       'In the dungeon, HP carries between rooms and only refills at the start of a floor (or on death).'],
   },
   {
     id: 'strength', name: 'Strength', abbr: 'Str', aliases: ['strength', 'str', 'p.att', 'patt'],
-    base: 5, perPoint: 1, fmt: 'int', derive: { patt: 2 },
+    fmt: 'int', derive: { patt: 2 },
     help: [
       'Physical might. Each point adds +2 Physical Attack (P.Att) in combat.',
       'P.Att is used when your equipped weapon is physical (swords, daggers,',
@@ -57,7 +67,7 @@ export const STAT_DEFS = [
   },
   {
     id: 'intelligence', name: 'Intelligence', abbr: 'Int', aliases: ['intelligence', 'int', 'm.att', 'matt'],
-    base: 5, perPoint: 1, fmt: 'int', derive: { matt: 2 },
+    fmt: 'int', derive: { matt: 2 },
     help: [
       'Arcane knowledge. Each point adds +2 Magical Attack (M.Att) in combat.',
       'M.Att is used when your equipped weapon is magical (wands, staves), checked',
@@ -66,19 +76,19 @@ export const STAT_DEFS = [
   },
   {
     id: 'constitution', name: 'Constitution', abbr: 'Con', aliases: ['constitution', 'con', 'p.def', 'pdef'],
-    base: 5, perPoint: 1, fmt: 'int', derive: { pdef: 1 },
+    fmt: 'int', derive: { pdef: 1 },
     help: ['Physical resilience. Each point adds +1 Physical Defense (P.Def).',
       'damage taken = raw x (1 - P.Def / (P.Def + 50))'],
   },
   {
     id: 'spirit', name: 'Spirit', abbr: 'Spr', aliases: ['spirit', 'spr', 'm.def', 'mdef'],
-    base: 5, perPoint: 1, fmt: 'int', derive: { mdef: 1 },
+    fmt: 'int', derive: { mdef: 1 },
     help: ['Magical resilience. Each point adds +1 Magical Defense (M.Def).',
       'damage taken = raw x (1 - M.Def / (M.Def + 50))'],
   },
   {
     id: 'agility', name: 'Agility', abbr: 'Agi', aliases: ['agility', 'agi', 'speed', 'spd', 'dodge', 'ddg'],
-    base: 10, perPoint: 1, fmt: 'int', derive: { speed: 1, dodge: 2 },
+    fmt: 'int', derive: { speed: 1, dodge: 2 },
     help: [
       'Quickness and reflexes. Each point adds +1 Speed and +2 Dodge in combat.',
       'Speed decides who strikes first (higher goes first).',
@@ -88,14 +98,14 @@ export const STAT_DEFS = [
   },
   {
     id: 'perception', name: 'Perception', abbr: 'Per', aliases: ['perception', 'per', 'perc', 'accuracy', 'acc'],
-    base: 90, perPoint: 1, fmt: 'int', derive: { acc: 1 },
+    fmt: 'int', derive: { acc: 1 },
     help: ['Awareness and aim. Each point adds +1 Accuracy in combat.',
       'hit chance = min(100%, Accuracy / (2 x target Dodge))   (never below 10%)',
       'You reach 100% hit at twice the target\'s Dodge.'],
   },
   {
     id: 'critRate', name: 'Crit Rate', abbr: 'Crit%', aliases: ['crit.rate', 'critrate', 'cr'],
-    base: 5, perPoint: 0.5, fmt: 'pct', derive: { critRate: 1 },
+    fmt: 'pct', derive: { critRate: 1 },
     help: [
       'Chance to land a critical hit.',
       'Above 100% it always crits and rolls the remainder for an extra crit — e.g. 120% = one guaranteed crit + a 20% chance of a second (multi-crit).',
@@ -103,7 +113,7 @@ export const STAT_DEFS = [
   },
   {
     id: 'critDmg', name: 'Crit Damage', abbr: 'CritDmg', aliases: ['crit.dmg', 'critdmg', 'cd'],
-    base: 150, perPoint: 5, fmt: 'pct', derive: { critDmg: 1 },
+    fmt: 'pct', derive: { critDmg: 1 },
     help: [
       'Damage multiplier per critical hit (150% = 1.5x).',
       'Multiple crits stack multiplicatively: two crits = raw x 1.5 x 1.5.',
@@ -111,7 +121,7 @@ export const STAT_DEFS = [
   },
   {
     id: 'luck', name: 'Luck', abbr: 'Luck', aliases: ['luck', 'lck'],
-    base: 0, perPoint: 1, fmt: 'int', derive: { luck: 1 },
+    fmt: 'int', derive: { luck: 1 },
     help: ['Improves the rarity of the loot you find.',
       'It has no direct combat effect — games use it for drop quality.'],
   },
@@ -163,10 +173,18 @@ export function findStat(input) {
   );
 }
 
+/** A characteristic's growth (base value + gain per point), from balance. */
+export function statGrowth(def) {
+  const c = getBalance().characteristics[def.id];
+  return { base: c ? c.base : 0, perPoint: c ? c.perPoint : 1 };
+}
+
 /** Effective value of a characteristic given its allocated points. */
 export function statValue(def, points = 0) {
   const p = Number(points) || 0;
-  return typeof def.curve === 'function' ? def.curve(p) : def.base + def.perPoint * p;
+  if (typeof def.curve === 'function') return def.curve(p);
+  const g = statGrowth(def);
+  return g.base + g.perPoint * p;
 }
 
 /** Human-readable value, e.g. "112" or "90.5%". Works for characteristic or combat defs. */

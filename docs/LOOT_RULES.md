@@ -6,10 +6,17 @@ enforcement points are named so they stay in sync.
 
 ## Adding items, modifiers & effects (data-driven)
 
-The item **catalogue** is data: [`game/items-data.js`](../frontend/src/game/items-data.js)
-(embedded default) and [`public/items.json`](../frontend/public/items.json)
-(editable post-build, backend-overridable — same layering as balance). Edit
-either to extend the game:
+The item **catalogue** is data with a single source of truth:
+[`public/items.json`](../frontend/public/items.json). The loader
+[`game/items-data.js`](../frontend/src/game/items-data.js) imports it as the
+baseline and re-fetches it at runtime (so `dist/items.json` is editable post-build
+and a backend `/items` can override it — same layering as balance).
+
+Items are stored as **recipes** (base + modifier refs `{id,kind,tier}` + upgrade
+level); their name and stats are computed **live** from the catalogue every time
+they're read (`itemName` / `itemStats` in items.js). So editing `items.json`
+retroactively changes items you already own — not just new drops. Edit
+`items.json` to extend the game:
 
 - **A weapon/armour** — add a `bases` entry: `{ key, name, slot, hands?,
   atkType?, stats:{} }`. Weapons use `slot:"weapon"` with `hands` 1/2/`"off"` and

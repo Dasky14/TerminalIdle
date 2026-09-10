@@ -18,7 +18,7 @@ import { getMinigame } from '../minigames/registry.js';
 import { exportSave, importSave, resetSave } from '../game/save.js';
 import { getConfig } from '../config.js';
 import { allocate, resetStats } from '../game/character.js';
-import { STAT_DEFS, statValue, formatStat, findStat, combatStat } from '../game/stats.js';
+import { STAT_DEFS, statValue, statGrowth, formatStat, findStat, combatStat } from '../game/stats.js';
 import { pointsPerLevel } from '../game/leveling.js';
 import {
   equipByUid,
@@ -29,7 +29,7 @@ import {
   EQUIP_SLOTS,
   SLOT_LABELS,
 } from '../game/equipment.js';
-import { modifierHelpLines, rarityChances, itemDisplayName } from '../game/items.js';
+import { modifierHelpLines, rarityChances, itemDisplayName, itemName } from '../game/items.js';
 import { effectiveStats } from '../game/character.js';
 import { listItems } from '../game/inventory.js';
 import {
@@ -387,7 +387,8 @@ export class Shell {
         return;
       }
       this.term(`${d.name}  (${d.aliases[0]})`, 'is-warn');
-      this.term(`base ${formatStat(d, d.base)}   ·   +${d.perPoint} per point`);
+      const g = statGrowth(d);
+      this.term(`base ${formatStat(d, g.base)}   ·   +${g.perPoint} per point`);
       const lines = Array.isArray(d.help) ? d.help : d.help ? [d.help] : [];
       for (const l of lines) this.term('  ' + l);
       if (d.id === 'luck') {
@@ -408,7 +409,7 @@ export class Shell {
     this.term('per point (characteristic -> combat):');
     for (const d of STAT_DEFS) {
       const key = d.aliases[0].padEnd(13);
-      const per = `+${d.perPoint}/pt`.padEnd(8);
+      const per = `+${statGrowth(d).perPoint}/pt`.padEnd(8);
       const derive = Object.entries(d.derive || {})
         .map(([id, m]) => `${(combatStat(id) || {}).abbr || id} x${m}`)
         .join(', ');
@@ -425,7 +426,7 @@ export class Shell {
       this.term('item not found', 'is-error');
       return;
     }
-    this.term(`equipped ${it.name}`, 'is-ok');
+    this.term(`equipped ${itemDisplayName(it)}`, 'is-ok');
   }
 
   /** Open the slot-detail screen for a chosen equipment slot. */
@@ -461,7 +462,7 @@ export class Shell {
       this.term('item not found', 'is-error');
       return;
     }
-    this.term(`equipped ${it.name} -> ${SLOT_LABELS[this.equipSlot]}`, 'is-ok');
+    this.term(`equipped ${itemDisplayName(it)} -> ${SLOT_LABELS[this.equipSlot]}`, 'is-ok');
   }
 
   /** Open an inventory category (filtered view). */
@@ -494,7 +495,7 @@ export class Shell {
       return;
     }
     const it = unequip(slot);
-    this.term(it ? `unequipped ${it.name} (${SLOT_LABELS[slot]})` : `${SLOT_LABELS[slot]} is empty`, it ? 'is-ok' : 'is-warn');
+    this.term(it ? `unequipped ${itemDisplayName(it)} (${SLOT_LABELS[slot]})` : `${SLOT_LABELS[slot]} is empty`, it ? 'is-ok' : 'is-warn');
   }
 
   // --- Item detail / salvage / upgrade ------------------------------------
@@ -528,7 +529,7 @@ export class Shell {
       return;
     }
     const dup = res.cost.duplicates ? ` + ${res.cost.duplicates} duplicate(s)` : '';
-    this.term(`upgraded ${loc.item.name} to +${res.level}  (-${res.cost.amount} ${res.cost.resource}${dup})`, 'is-ok');
+    this.term(`upgraded ${itemName(loc.item)} to +${res.level}  (-${res.cost.amount} ${res.cost.resource}${dup})`, 'is-ok');
   }
 
   /** Salvage one inventory item by uid, then step back to the list. */
@@ -568,10 +569,10 @@ export class Shell {
    */
   _resolveItemByName(candidates, query) {
     const q = String(query || '').toLowerCase().trim();
-    const matches = candidates.filter((it) => it.name.toLowerCase().includes(q));
+    const matches = candidates.filter((it) => itemName(it).toLowerCase().includes(q));
     if (matches.length === 0) return { none: true };
     if (matches.length === 1) return { item: matches[0] };
-    const exact = matches.filter((it) => it.name.toLowerCase() === q);
+    const exact = matches.filter((it) => itemName(it).toLowerCase() === q);
     if (exact.length) return { item: exact[0] };
     return { ambiguous: matches };
   }

@@ -10,7 +10,7 @@
 import { addXp } from './leveling.js';
 import { addResources } from './resources.js';
 import { addItem } from './inventory.js';
-import { generateItem } from './items.js';
+import { generateItem, itemName } from './items.js';
 import { effectiveStats } from './character.js';
 import { shouldAutoScrap, salvageYield } from './salvage.js';
 
@@ -53,8 +53,9 @@ export function applyReward(reward = {}, ctx = {}) {
           addRes(y);
           summary.scrapped += 1;
         } else {
-          addItem({ id: gen.uid, name: gen.name, qty: 1, meta: gen });
-          summary.items.push({ id: gen.uid, name: gen.name, rarity: gen.rarity, qty: 1 });
+          const name = itemName(gen);
+          addItem({ id: gen.uid, name, qty: 1, meta: gen });
+          summary.items.push({ id: gen.uid, name, rarity: gen.rarity, qty: 1 });
         }
       } else if (item.id) {
         addItem(item);

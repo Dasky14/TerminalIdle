@@ -19,6 +19,23 @@ const STORAGE_KEY = 'til.save.v1';
 // --- Migration --------------------------------------------------------------
 // Each entry migrates a save FROM version N to N+1. Add new ones as the schema
 // evolves; older saves are upgraded step by step on import/load.
+
+/** Strip a baked item down to its RECIPE (v6+). Keeps identity + modifier refs;
+ *  name/stats/effects are computed from the catalogue at read time. Handles both
+ *  the modifier shapes used across versions ({id,...} and older {statId,...}). */
+function toItemRecipe(it) {
+  if (!it || typeof it !== 'object') return it;
+  const r = { uid: it.uid, base: it.base, rarity: it.rarity, slot: it.slot, upgrade: it.upgrade || 0 };
+  if (it.hands != null) r.hands = it.hands;
+  if (it.atkType) r.atkType = it.atkType;
+  r.mods = Array.isArray(it.mods)
+    ? it.mods
+        .map((m) => ({ id: m.id || m.statId, kind: m.kind, tier: m.tier || 1 }))
+        .filter((m) => m.id && m.kind)
+    : [];
+  return r;
+}
+
 const MIGRATIONS = {
   // v1 -> v2: introduce character stats. Grant retroactive points for levels
   // already earned so existing players aren't shortchanged.
@@ -46,6 +63,19 @@ const MIGRATIONS = {
     autoScrap: old.autoScrap || { all: [], byType: {} },
     minigameMeta: old.minigameMeta || {},
   }),
+  // v5 -> v6: items become RECIPES (base + modifier refs + rolled tiers +
+  // upgrade); their name and stats are computed live from the catalogue instead
+  // of baked in, so editing items.json / balance.json retroactively rebalances
+  // owned gear. Strip the baked stats/name/effects; keep the recipe.
+  5: (old) => {
+    const eq = old.equipment || {};
+    const equipment = {};
+    for (const [slot, it] of Object.entries(eq)) equipment[slot] = it ? toItemRecipe(it) : null;
+    const inventory = (old.inventory || []).map((e) =>
+      e && e.meta && e.meta.slot ? { ...e, meta: toItemRecipe(e.meta) } : e,
+    );
+    return { ...old, version: 6, equipment, inventory };
+  },
   // v4 -> v5: rename combat stats to characteristics (two-layer model). The
   // allocated POINT counts transfer 1:1 (the new per-point derivation reproduces
   // the same combat values), and Dodge folds into Agility (points summed with
