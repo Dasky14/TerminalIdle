@@ -9,7 +9,7 @@
     "agility": { "base": 10, "perPoint": 1 },
     "perception": { "base": 90, "perPoint": 1 },
     "critRate": { "base": 5, "perPoint": 0.5 },
-    "critDmg": { "base": 150, "perPoint": 5 },
+    "critDmg": { "base": 150, "perPoint": 1 },
     "luck": { "base": 0, "perPoint": 1 }
   },
   "leveling": {
