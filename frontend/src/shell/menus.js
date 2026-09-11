@@ -220,10 +220,24 @@ export function buildScreen(id, shell) {
         const gear = listItems()
           .filter((e) => e.meta && e.meta.slot)
           .map((e) => e.meta)
+          .filter((it) => shell.matchesInvFilter(it))
           .sort(compareItems);
         const { slice, page, pages, total } = paginate(shell, gear);
+        const fcount = shell.invFilterActiveCount();
+        const headerActions = [
+          {
+            label: fcount ? `Filters (${fcount})` : 'Filters',
+            active: shell.invFilterOpen || fcount > 0,
+            act: (s) => s.toggleInvFilter(),
+          },
+        ];
         const items = [...pageItems(page, pages), BACK];
-        if (!total) return { title: 'INVENTORY / EQUIPMENT', body: ['(no equipment yet)'], items };
+        if (!total) {
+          const view = [];
+          if (shell.invFilterOpen) view.push({ t: 'filter' });
+          view.push({ t: 'note', text: fcount ? 'no items match the current filters' : '(no equipment yet)' });
+          return { title: 'INVENTORY / EQUIPMENT', view, headerActions, items };
+        }
         const rows = slice.map((it) => ({
           uid: it.uid,
           cells: [
@@ -237,11 +251,14 @@ export function buildScreen(id, shell) {
             { label: 'Salvage', kind: 'salvage' },
           ],
         }));
-        const view = [
-          { t: 'note', text: `Page ${page + 1}/${pages} · ${total} items · click a row for details` },
-          { t: 'table', head: ['Item', 'Rarity', 'Slot', 'Stats', ''], rows },
-        ];
-        return { title: 'INVENTORY / EQUIPMENT', view, items };
+        const view = [];
+        if (shell.invFilterOpen) view.push({ t: 'filter' });
+        view.push({
+          t: 'note',
+          text: `Page ${page + 1}/${pages} · ${total} item${total === 1 ? '' : 's'}${fcount ? ' (filtered)' : ''} · click a row for details`,
+        });
+        view.push({ t: 'table', head: ['Item', 'Rarity', 'Slot', 'Stats', ''], rows });
+        return { title: 'INVENTORY / EQUIPMENT', view, headerActions, items };
       }
       const others = listItems().filter((e) => !(e.meta && e.meta.slot));
       const { slice, page, pages, total } = paginate(shell, others);

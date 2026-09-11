@@ -22,7 +22,15 @@ import { getMinigame } from '../minigames/registry.js';
 import { exportSave, importSave, resetSave } from '../game/save.js';
 import { getConfig } from '../config.js';
 import { allocate, resetStats } from '../game/character.js';
-import { STAT_DEFS, statValue, statGrowth, formatStat, findStat, combatStat } from '../game/stats.js';
+import {
+  STAT_DEFS,
+  COMBAT_STATS,
+  statValue,
+  statGrowth,
+  formatStat,
+  findStat,
+  combatStat,
+} from '../game/stats.js';
 import { pointsPerLevel } from '../game/leveling.js';
 import {
   equipByUid,
@@ -33,7 +41,13 @@ import {
   EQUIP_SLOTS,
   SLOT_LABELS,
 } from '../game/equipment.js';
-import { modifierHelpLines, rarityChances, itemDisplayName, itemName } from '../game/items.js';
+import {
+  modifierHelpLines,
+  rarityChances,
+  itemDisplayName,
+  itemName,
+  effectiveItemStats,
+} from '../game/items.js';
 import { effectiveStats } from '../game/character.js';
 import { listItems } from '../game/inventory.js';
 import {
@@ -120,6 +134,25 @@ const SECTION_OF = {
   'reset-confirm': 'system',
 };
 
+// Inventory-equipment filter option groups. Values match item fields: rarity
+// (item.rarity), slot type (item.slot, weapons share 'weapon'), and combat-stat
+// ids (from effectiveItemStats). Stats options come from COMBAT_STATS.
+const INV_FILTER_RARITY = [
+  { value: 'common', label: 'Common' },
+  { value: 'rare', label: 'Rare' },
+  { value: 'epic', label: 'Epic' },
+  { value: 'legendary', label: 'Legendary' },
+];
+const INV_FILTER_SLOT = [
+  { value: 'head', label: 'Head' },
+  { value: 'chest', label: 'Chest' },
+  { value: 'hands', label: 'Hands' },
+  { value: 'legs', label: 'Legs' },
+  { value: 'feet', label: 'Feet' },
+  { value: 'weapon', label: 'Weapon' },
+];
+const INV_FILTER_STATS = COMBAT_STATS.map((c) => ({ value: c.id, label: c.abbr }));
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export class Shell {
@@ -132,6 +165,12 @@ export class Shell {
 
     this.termLines = []; // bottom terminal transcript
     this.gameLog = []; // middle game-event feed
+
+    // Inventory-equipment filters (session-only). Each set holds selected
+    // values; empty = that category doesn't constrain. Categories combine with
+    // AND, values within a category with OR.
+    this.invFilter = { rarity: new Set(), slot: new Set(), stats: new Set() };
+    this.invFilterOpen = false;
 
     // On touch devices we must NOT auto-focus / refocus the input, or the
     // on-screen keyboard pops open and shoves the fixed-height layout out of
@@ -601,7 +640,27 @@ export class Shell {
     const s = this.screen;
     const head = document.createElement('div');
     head.className = 'term__line term__line--head';
-    head.textContent = `:: ${s.title}`;
+    if (s.headerActions && s.headerActions.length) {
+      head.classList.add('sv-head');
+      const title = document.createElement('span');
+      title.textContent = `:: ${s.title}`;
+      head.appendChild(title);
+      const acts = document.createElement('span');
+      acts.className = 'sv-head__acts';
+      for (const a of s.headerActions) {
+        const btn = document.createElement('button');
+        btn.className = 'sv-head__btn' + (a.active ? ' is-on' : '');
+        btn.textContent = a.label;
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          a.act(this);
+        });
+        acts.appendChild(btn);
+      }
+      head.appendChild(acts);
+    } else {
+      head.textContent = `:: ${s.title}`;
+    }
     this.$out.appendChild(head);
 
     const sv = document.createElement('div');
@@ -714,7 +773,60 @@ export class Shell {
       wrap.appendChild(t);
       return wrap;
     }
+    if (b.t === 'filter') {
+      const panel = document.createElement('div');
+      panel.className = 'sv-filter';
+      const fhead = document.createElement('div');
+      fhead.className = 'sv-filter__head';
+      const ftitle = document.createElement('span');
+      ftitle.textContent = 'FILTERS';
+      const x = document.createElement('button');
+      x.className = 'sv-filter__x';
+      x.textContent = '×';
+      x.title = 'Close';
+      x.addEventListener('click', () => this.toggleInvFilter());
+      fhead.append(ftitle, x);
+      panel.appendChild(fhead);
+
+      const grid = document.createElement('div');
+      grid.className = 'sv-filter__grid';
+      grid.appendChild(this._filterGroup('Rarity', 'rarity', INV_FILTER_RARITY));
+      grid.appendChild(this._filterGroup('Slot', 'slot', INV_FILTER_SLOT));
+      grid.appendChild(this._filterGroup('Stats', 'stats', INV_FILTER_STATS));
+      panel.appendChild(grid);
+
+      const foot = document.createElement('div');
+      foot.className = 'sv-filter__foot';
+      const clr = document.createElement('button');
+      clr.className = 'sv-mini';
+      clr.textContent = 'Clear all';
+      clr.addEventListener('click', () => this.clearInvFilter());
+      foot.appendChild(clr);
+      panel.appendChild(foot);
+      return panel;
+    }
     return document.createElement('div');
+  }
+
+  /** One filter category (a titled column of checkboxes). */
+  _filterGroup(title, cat, options) {
+    const g = document.createElement('div');
+    g.className = 'sv-filter__group';
+    const t = document.createElement('div');
+    t.className = 'sv-filter__gt';
+    t.textContent = title;
+    g.appendChild(t);
+    for (const o of options) {
+      const lab = document.createElement('label');
+      lab.className = 'sv-filter__opt';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = this.invFilter[cat].has(o.value);
+      cb.addEventListener('change', () => this.toggleFilterValue(cat, o.value));
+      lab.append(cb, document.createTextNode(' ' + o.label));
+      g.appendChild(lab);
+    }
+    return g;
   }
 
   /** One table cell → HTML. `{rarity}` renders tier squares; else `{text, cls, up}`. */
@@ -906,6 +1018,60 @@ export class Shell {
     this.invCat = cat;
     this.listPage = 0;
     this.navigate('inventory-cat');
+  }
+
+  // --- Inventory equipment filters ----------------------------------------
+  /** Show/hide the filter overlay. */
+  toggleInvFilter() {
+    this.invFilterOpen = !this.invFilterOpen;
+    this.render(false);
+  }
+
+  /** Toggle one value in a filter category ('rarity' | 'slot' | 'stats'). */
+  toggleFilterValue(cat, value) {
+    const set = this.invFilter[cat];
+    if (!set) return;
+    if (set.has(value)) set.delete(value);
+    else set.add(value);
+    this.listPage = 0; // filtering changes the list length; start at page 1
+    this.render(false);
+  }
+
+  /** Clear every filter selection. */
+  clearInvFilter() {
+    this.invFilter.rarity.clear();
+    this.invFilter.slot.clear();
+    this.invFilter.stats.clear();
+    this.listPage = 0;
+    this.render(false);
+  }
+
+  /** Number of active filter selections across all categories. */
+  invFilterActiveCount() {
+    const f = this.invFilter;
+    return f.rarity.size + f.slot.size + f.stats.size;
+  }
+
+  /** True if an item passes the current filters (AND across categories). */
+  matchesInvFilter(item) {
+    const f = this.invFilter;
+    if (f.rarity.size && !f.rarity.has(item.rarity)) return false;
+    if (f.slot.size) {
+      const slotType = item.slot === 'weapon' ? 'weapon' : item.slot;
+      if (!f.slot.has(slotType)) return false;
+    }
+    if (f.stats.size) {
+      const eff = effectiveItemStats(item);
+      let has = false;
+      for (const id of f.stats) {
+        if (eff[id]) {
+          has = true;
+          break;
+        }
+      }
+      if (!has) return false;
+    }
+    return true;
   }
 
   /** `equip <name>` — equip the first inventory item matching the name. */

@@ -261,6 +261,7 @@ body::after {
 
 /* ---- Main content ---- */
 .main {
+  position: relative; /* positioning context for the filter overlay */
   border: 1.5px solid var(--line);
   background: var(--panel);
   padding: 12px 14px;
@@ -547,9 +548,115 @@ body::after {
   color: var(--fg-bright);
 }
 
+/* Header action buttons, sitting on the filled title bar. */
+.term__line--head.sv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.sv-head__acts {
+  display: flex;
+  gap: 6px;
+}
+.sv-head__btn {
+  border: 1px solid var(--bg);
+  background: transparent;
+  color: var(--bg);
+  font-family: var(--font);
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 2px 10px;
+  cursor: pointer;
+  text-shadow: none;
+}
+.sv-head__btn:hover,
+.sv-head__btn.is-on {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+/* Filter overlay (Inventory / Equipment). */
+.sv-filter {
+  position: absolute;
+  top: 46px;
+  right: 14px;
+  z-index: 20;
+  width: min(540px, calc(100% - 28px));
+  border: 1.5px solid var(--line);
+  background: var(--bg);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+.sv-filter__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--fg);
+  color: var(--bg);
+  text-shadow: none;
+  padding: 4px 10px;
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+.sv-filter__x {
+  border: 0;
+  background: transparent;
+  color: var(--bg);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  text-shadow: none;
+}
+.sv-filter__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  max-height: 58vh;
+  overflow: auto;
+}
+.sv-filter__gt {
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--line2);
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+}
+.sv-filter__opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-size: 13px;
+}
+.sv-filter__opt input {
+  accent-color: var(--fg);
+  width: 14px;
+  height: 14px;
+}
+.sv-filter__foot {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line2);
+  padding: 8px 12px;
+}
+
 /* Stat columns collapse to one on very narrow screens. */
 @media (max-width: 700px) {
   .sv-cols {
+    grid-template-columns: 1fr;
+  }
+  .sv-filter {
+    width: calc(100% - 28px);
+  }
+  .sv-filter__grid {
     grid-template-columns: 1fr;
   }
 }
