@@ -127,6 +127,11 @@ const COMMANDS = [
     usage: 'loglines <n>         set game log height (in lines)',
     run: (s, args, arg) => (arg ? s.setLogLines(arg) : s.logLinesUsage()),
   },
+  {
+    names: ['uiscale', 'uizoom'],
+    usage: 'uiscale [n]          zoom the sidebar + content (e.g. 1.2 or 120%)',
+    run: (s, args, arg) => (arg ? s.setUiScale(arg) : s.uiScaleUsage()),
+  },
   { names: ['ping'], usage: 'ping                 check the configured backend', run: (s) => s.pingBackend() },
   {
     names: ['reset'],

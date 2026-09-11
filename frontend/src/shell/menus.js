@@ -27,7 +27,14 @@ import {
   equipmentBonuses,
   locateItem,
 } from '../game/equipment.js';
-import { describeStats, compareItems, itemEffects, itemDisplayName } from '../game/items.js';
+import {
+  describeStats,
+  compareItems,
+  itemEffects,
+  itemDisplayName,
+  itemName,
+  itemUpgradeLevel,
+} from '../game/items.js';
 import { combatProfile, derivedStats, effectiveStats } from '../game/character.js';
 import { salvageYield, getAutoScrap, AUTO_TYPES, AUTO_RARITIES } from '../game/salvage.js';
 import { isUpgradeable, upgradeCost, canUpgrade, itemOrientation, countDuplicates } from '../game/upgrade.js';
@@ -42,6 +49,20 @@ const TYPE_LABELS = {
   legs: 'Legs', feet: 'Feet', weapon: 'Weapons',
 };
 const handsLabel = (h) => (h === 2 ? 'two-handed' : h === 'off' ? 'off-hand' : 'one-handed');
+const handsShort = (h) => (h === 2 ? '2H' : h === 'off' ? 'Off-hand' : '1H');
+
+// Idle-time cap for the root dashboard (mirrors the away-reward cap).
+const AWAY_CAP_MS = 24 * 60 * 60 * 1000;
+
+/** Compact duration: "3h 12m" / "12m" / "45s". */
+function fmtDuration(ms) {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${Math.max(0, s)}s`;
+}
 
 /** Slice an array to the shell's current page, clamping the page in range. */
 function paginate(shell, arr) {
@@ -65,59 +86,95 @@ function pageItems(page, pages) {
 
 export function buildScreen(id, shell) {
   switch (id) {
-    case 'root':
-      return {
-        title: 'MAIN MENU',
-        body: [],
-        items: [
-          { key: 'S', label: 'Stats', action: (s) => s.navigate('stats') },
-          { key: 'E', label: 'Equipment', action: (s) => s.navigate('equipment') },
-          { key: 'I', label: 'Inventory', action: (s) => s.navigate('inventory') },
-          { key: 'R', label: 'Resources', action: (s) => s.navigate('resources') },
-          { key: 'G', label: 'Games', action: (s) => s.navigate('games') },
-          { key: 'Y', label: 'System', action: (s) => s.navigate('system') },
-        ],
-      };
+    case 'root': {
+      // The sidebar already covers navigation, so the main menu is now an
+      // at-a-glance dashboard: level/XP and per-minigame idle time waiting to be
+      // collected on next open.
+      const snap = levelSnapshot();
+      const body = [
+        `Level ${snap.level}    XP ${snap.xpIntoLevel} / ${snap.xpForNext}  (${(snap.progress * 100).toFixed(0)}%)`,
+        '',
+        'MINIGAMES — idle progress waiting to be collected:',
+      ];
+      const meta = state.minigameMeta || {};
+      const now = Date.now();
+      if (!MINIGAMES.length) {
+        body.push('  (no minigames registered)');
+      } else {
+        for (const m of MINIGAMES) {
+          const last = meta[m.id] && meta[m.id].lastOpen;
+          let idleStr;
+          if (!last) {
+            idleStr = 'not started';
+          } else {
+            const elapsed = now - last;
+            idleStr = `idle ${fmtDuration(Math.min(elapsed, AWAY_CAP_MS))}${elapsed > AWAY_CAP_MS ? ' (max)' : ''}`;
+          }
+          body.push(`  ${m.title.padEnd(18)} ${idleStr}`);
+        }
+      }
+      return { title: 'MAIN MENU', body, items: [] };
+    }
 
     case 'stats': {
       const snap = levelSnapshot();
-      const bar = progressBar(snap.progress, 20);
       // Two layers: allocatable CHARACTERISTICS, and the COMBAT stats they derive
       // (plus equipment). derived = from characteristics only; eff = with gear.
       const derived = derivedStats();
       const eff = effectiveStats();
-      const body = [
-        `Level    : ${snap.level}`,
-        `XP       : ${snap.xpIntoLevel} / ${snap.xpForNext}`,
-        `Progress : ${bar} ${(snap.progress * 100).toFixed(0)}%`,
-        `Points   : ${state.statPoints} unspent`,
-        '',
-        'CHARACTERISTICS',
-        ...STAT_DEFS.map((d) => {
-          const pts = state.stats[d.id] || 0;
-          return `  ${(d.name + ':').padEnd(15)}${formatStat(d, statValue(d, pts)).padStart(6)}   (${pts} pts)`;
-        }),
-        '',
-        'COMBAT (used in games)',
-        ...COMBAT_STATS.map((c) => {
-          const total = eff[c.id] || 0;
-          const gear = total - (derived[c.id] || 0);
-          const gearStr = gear > 0.0001
-            ? `   (+${formatStat(c, gear).replace('%', '')}${c.fmt === 'pct' ? '%' : ''} gear)`
-            : '';
-          return `  ${(c.abbr + ':').padEnd(9)}${formatStat(c, total).padStart(7)}${gearStr}`;
-        }),
-      ];
-      // Weapon combat profile: how your equipped weapons attack.
       const prof = combatProfile();
       const atkStr = prof.attacks.map((a) => `${a.mult}x ${a.type}`).join(' + ');
-      body.push('', `Attacks  : ${atkStr}  (${prof.label})`);
+
+      const view = [
+        {
+          t: 'headline',
+          left: `LEVEL ${snap.level}`,
+          right: `${state.statPoints} POINTS`,
+        },
+        {
+          t: 'meter',
+          label: `XP ${snap.xpIntoLevel} / ${snap.xpForNext}`,
+          sub: `${(snap.progress * 100).toFixed(0)}%`,
+          fill: snap.progress,
+        },
+        {
+          t: 'cols',
+          cols: [
+            {
+              title: 'Characteristics',
+              rows: STAT_DEFS.map((d) => {
+                const pts = state.stats[d.id] || 0;
+                return { name: d.name, value: formatStat(d, statValue(d, pts)), note: `${pts} pt` };
+              }),
+            },
+            {
+              title: 'Combat',
+              titleNote: '+gear',
+              rows: COMBAT_STATS.map((c) => {
+                const total = eff[c.id] || 0;
+                const gear = total - (derived[c.id] || 0);
+                return {
+                  name: c.abbr,
+                  value: formatStat(c, total),
+                  note: gear > 0.0001 ? `+${formatStat(c, gear)}` : '',
+                  noteGear: true,
+                };
+              }),
+            },
+          ],
+        },
+        { t: 'line', text: `Attacks: ${atkStr}  (${prof.label})`, cls: 'is-strong' },
+      ];
       if (prof.defenseMult > 1) {
-        body.push(`Defense  : +${Math.round((prof.defenseMult - 1) * 100)}% from shield`);
+        view.push({
+          t: 'line',
+          text: `Defense: +${Math.round((prof.defenseMult - 1) * 100)}% from shield`,
+          cls: 'is-warn',
+        });
       }
       return {
         title: 'STATS',
-        body,
+        view,
         items: [
           { label: 'Allocate stats', hint: 'spend your points', action: (s) => s.navigate('stats-allocate') },
           { label: 'Stats help', hint: 'growth per point', action: (s) => s.statsHelp() },
@@ -165,14 +222,26 @@ export function buildScreen(id, shell) {
           .map((e) => e.meta)
           .sort(compareItems);
         const { slice, page, pages, total } = paginate(shell, gear);
-        const body = total ? [`Page ${page + 1}/${pages}  (${total} items) — select one for details`] : ['(no equipment yet)'];
-        const items = slice.map((it) => ({
-          label: `[${it.rarity}] ${itemDisplayName(it)}`,
-          hint: describeStats(it),
-          action: (s) => s.openItem(it.uid),
+        const items = [...pageItems(page, pages), BACK];
+        if (!total) return { title: 'INVENTORY / EQUIPMENT', body: ['(no equipment yet)'], items };
+        const rows = slice.map((it) => ({
+          uid: it.uid,
+          cells: [
+            { text: itemName(it), cls: 'sv-nm', up: itemUpgradeLevel(it) },
+            { rarity: it.rarity },
+            { text: it.slot === 'weapon' ? `${handsShort(it.hands)} Weapon` : SLOT_LABELS[it.slot] || it.slot, cls: 'sv-dim' },
+            { text: describeStats(it), cls: 'sv-stat' },
+          ],
+          actions: [
+            { label: 'Equip', kind: 'equip' },
+            { label: 'Salvage', kind: 'salvage' },
+          ],
         }));
-        items.push(...pageItems(page, pages), BACK);
-        return { title: 'INVENTORY / EQUIPMENT', body, items };
+        const view = [
+          { t: 'note', text: `Page ${page + 1}/${pages} · ${total} items · click a row for details` },
+          { t: 'table', head: ['Item', 'Rarity', 'Slot', 'Stats', ''], rows },
+        ];
+        return { title: 'INVENTORY / EQUIPMENT', view, items };
       }
       const others = listItems().filter((e) => !(e.meta && e.meta.slot));
       const { slice, page, pages, total } = paginate(shell, others);
@@ -188,17 +257,32 @@ export function buildScreen(id, shell) {
       const bonuses = equipmentBonuses();
       const bonusStr = COMBAT_STATS.filter((d) => bonuses[d.id])
         .map((d) => `+${formatStat(d, bonuses[d.id])} ${d.abbr}`)
-        .join(', ');
-      const body = [bonusStr ? `Total bonuses: ${bonusStr}` : 'select a slot to view or change its gear'];
-
-      const items = EQUIP_SLOTS.map((slot) => {
-        let val;
-        if (slot === 'weapon2' && isWeapon2Blocked()) val = '-- (2-handed)';
-        else val = eq[slot] ? itemDisplayName(eq[slot]) : '(empty)';
-        return { label: `${SLOT_LABELS[slot]}: ${val}`, action: (s) => s.openSlot(slot) };
+        .join('  ');
+      const rows = EQUIP_SLOTS.map((slot) => {
+        const it = eq[slot];
+        let itemCell;
+        if (slot === 'weapon2' && isWeapon2Blocked()) itemCell = { text: '— (2H equipped)', cls: 'sv-dim' };
+        else if (it) itemCell = { text: itemName(it), cls: 'sv-nm', up: itemUpgradeLevel(it) };
+        else itemCell = { text: '(empty)', cls: 'sv-dim' };
+        return {
+          uid: it ? it.uid : null,
+          cells: [
+            { text: SLOT_LABELS[slot], cls: 'sv-dim' },
+            itemCell,
+            { text: it ? describeStats(it) : '', cls: 'sv-stat' },
+          ],
+        };
       });
-      items.push(BACK);
-      return { title: 'EQUIPMENT', body, items };
+      const view = [
+        {
+          t: 'note',
+          text: bonusStr
+            ? `Total bonuses: ${bonusStr}`
+            : 'click a slot to view stats, upgrade, or unequip · equip gear from Inventory',
+        },
+        { t: 'table', head: ['Slot', 'Item', 'Stats'], rows },
+      ];
+      return { title: 'EQUIPMENT', view, items: [BACK] };
     }
 
     case 'equip-slot': {
@@ -277,7 +361,7 @@ export function buildScreen(id, shell) {
         });
       }
       if (loc.where === 'inventory') {
-        items.push({ label: 'Salvage', hint: `+${y.scrap} scrap / +${y.essence} essence`, action: (s) => s.salvageOne(shell.itemUid) });
+        items.push({ label: 'Salvage', hint: `+${y.scrap} scrap / +${y.essence} essence`, action: (s) => s.salvageOne(shell.itemUid, true) });
       } else {
         body.push('(unequip an item before salvaging it)');
       }
@@ -401,6 +485,11 @@ export function buildScreen(id, shell) {
             action: (s) => s.mobileViewUsage(),
           },
           {
+            label: 'UI scale',
+            hint: 'zoom the sidebar + content',
+            action: (s) => s.uiScaleUsage(),
+          },
+          {
             label: 'Terminal height',
             hint: 'lines shown in the terminal',
             action: (s) => s.termLinesUsage(),
@@ -421,9 +510,4 @@ export function buildScreen(id, shell) {
         items: [BACK],
       };
   }
-}
-
-function progressBar(ratio, width) {
-  const filled = Math.round(Math.max(0, Math.min(1, ratio)) * width);
-  return `[${'#'.repeat(filled)}${'-'.repeat(width - filled)}]`;
 }

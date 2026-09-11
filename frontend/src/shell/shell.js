@@ -54,10 +54,14 @@ const MOBILE_KEY = 'til.mobile';
 const TERMLINES_KEY = 'til.termlines';
 const LOGLINES_KEY = 'til.loglines';
 const DOCKMIN_KEY = 'til.dockmin';
+const UISCALE_KEY = 'til.uiscale';
 const DEFAULT_TERMLINES = 8;
 const DEFAULT_LOGLINES = 3;
 const MIN_LINES = 1;
 const MAX_LINES = 50;
+const DEFAULT_UISCALE = 1;
+const MIN_UISCALE = 0.6;
+const MAX_UISCALE = 1.6;
 const ANIM_ON = ['on', 'enable', 'enabled', 'true', 'yes'];
 const ANIM_OFF = ['off', 'disable', 'disabled', 'false', 'no'];
 const PRINT_DELAY_MS = 12;
@@ -149,6 +153,9 @@ export class Shell {
     // Pane heights (game log / terminal) are measured in lines and adjustable.
     this._loadLayout();
 
+    // UI scale (zoom) for the sidebar + main content.
+    this._loadUiScale();
+
     // Live screens (stats/inventory/...) redraw instantly when state changes.
     onChange(() => {
       if (
@@ -187,14 +194,16 @@ export class Shell {
 
     this.root.innerHTML = `
       <div class="shell">
-        <aside class="rail pc">
-          <div class="rail__brand" data-home="1">${ICON.logo}<span>TERMINALIDLE</span></div>
-          <nav class="rail__nav">${navHtml}</nav>
-          <div class="rail__foot"></div>
-        </aside>
-        <main class="main pc">
-          <div class="term__out" tabindex="-1"></div>
-        </main>
+        <div class="shell__top">
+          <aside class="rail pc">
+            <div class="rail__brand" data-home="1">${ICON.logo}<span>TERMINALIDLE</span></div>
+            <nav class="rail__nav">${navHtml}</nav>
+            <div class="rail__foot"></div>
+          </aside>
+          <main class="main pc">
+            <div class="term__out" tabindex="-1"></div>
+          </main>
+        </div>
         <section class="dock" data-min="false">
           <div class="dock__resizer" title="Drag to resize"><span class="dock__grip"></span></div>
           <div class="dock__bar">
@@ -491,18 +500,25 @@ export class Shell {
   async render(animate = true) {
     this.screen = buildScreen(this.currentId, this);
     this._updateSidebarActive();
-    const lines = this._composeLines();
     const gen = ++this._renderGen;
     this.$out.innerHTML = '';
+    // Keep the top (title bar) in view — the main pane is a screen, not a
+    // scrolling transcript.
+    this.$out.scrollTop = 0;
 
+    // Structured screens (stats table, inventory table) render instantly as real
+    // DOM (tables/meters), not as animated text lines.
+    if (this.screen.view) {
+      this._renderStructured();
+      return;
+    }
+
+    const lines = this._composeLines();
     // The animation setting can force an instant redraw.
     if (!animate || !this.animEnabled) {
       for (const entry of lines) this.$out.appendChild(this._makeNode(entry));
       return;
     }
-    // Keep the top (title bar) in view while lines print in below it — the main
-    // pane is a screen, not a scrolling transcript.
-    this.$out.scrollTop = 0;
     for (const entry of lines) {
       if (gen !== this._renderGen) return;
       this.$out.appendChild(this._makeNode(entry));
@@ -535,7 +551,13 @@ export class Shell {
     );
 
     lines.push({ t: 'gap', text: '' });
-    lines.push({ t: 'hint', text: 'type a number or name below, or click an option' });
+    lines.push({
+      t: 'hint',
+      text:
+        s.items && s.items.length
+          ? 'type a number or name below, or click an option'
+          : 'select a section from the sidebar, or type a command (help)',
+    });
     return lines;
   }
 
@@ -568,6 +590,147 @@ export class Shell {
       div.textContent = entry.text === '' ? ' ' : entry.text;
     }
     return div;
+  }
+
+  // --- Structured screens (tables / meters / stat columns) -----------------
+  // A screen may return `view` (an array of layout blocks) instead of / besides
+  // the plain text `body`. These render as real DOM — the full-parity Pip-Boy
+  // Stats and Inventory tables. The `items` list still renders below as the
+  // selectable nav (Back / paging / allocate), so number & name selection work.
+  _renderStructured() {
+    const s = this.screen;
+    const head = document.createElement('div');
+    head.className = 'term__line term__line--head';
+    head.textContent = `:: ${s.title}`;
+    this.$out.appendChild(head);
+
+    const sv = document.createElement('div');
+    sv.className = 'sv';
+    for (const block of s.view) sv.appendChild(this._viewBlock(block));
+    this.$out.appendChild(sv);
+
+    if (s.items && s.items.length) {
+      const gap = document.createElement('div');
+      gap.className = 'term__line term__line--dim';
+      gap.textContent = ' ';
+      this.$out.appendChild(gap);
+      s.items.forEach((it, i) =>
+        this.$out.appendChild(this._makeNode({ t: 'item', num: i + 1, label: it.label, hint: it.hint })),
+      );
+    }
+  }
+
+  _viewBlock(b) {
+    if (b.t === 'headline') {
+      const d = document.createElement('div');
+      d.className = 'sv-headline';
+      d.innerHTML =
+        `<span>${escapeHtml(b.left || '')}</span>` +
+        `<span class="sv-headline__r">${escapeHtml(b.right || '')}</span>`;
+      return d;
+    }
+    if (b.t === 'meter') {
+      const d = document.createElement('div');
+      d.className = 'sv-meter';
+      const pct = Math.round(Math.max(0, Math.min(1, b.fill || 0)) * 100);
+      d.innerHTML =
+        `<span class="sv-meter__lab">${escapeHtml(b.label || '')}</span>` +
+        `<span class="sv-bar"><i style="width:${pct}%"></i></span>` +
+        `<span class="sv-meter__sub">${escapeHtml(b.sub || '')}</span>`;
+      return d;
+    }
+    if (b.t === 'note') {
+      const d = document.createElement('div');
+      d.className = 'sv-note';
+      d.textContent = b.text || '';
+      return d;
+    }
+    if (b.t === 'line') {
+      const d = document.createElement('div');
+      d.className = 'sv-line ' + (b.cls || '');
+      d.textContent = b.text || '';
+      return d;
+    }
+    if (b.t === 'cols') {
+      const d = document.createElement('div');
+      d.className = 'sv-cols';
+      for (const col of b.cols) {
+        const c = document.createElement('div');
+        c.className = 'sv-col';
+        const h = document.createElement('div');
+        h.className = 'sv-col__title';
+        h.innerHTML =
+          escapeHtml(col.title) +
+          (col.titleNote ? `<span class="sv-col__note">${escapeHtml(col.titleNote)}</span>` : '');
+        c.appendChild(h);
+        for (const r of col.rows) {
+          const row = document.createElement('div');
+          row.className = 'sv-row';
+          row.innerHTML =
+            `<span class="sv-row__name">${escapeHtml(r.name)}</span>` +
+            `<span class="sv-row__val">${escapeHtml(r.value)}</span>` +
+            `<span class="sv-row__note${r.noteGear ? ' is-gear' : ''}">${escapeHtml(r.note || '')}</span>`;
+          c.appendChild(row);
+        }
+        d.appendChild(c);
+      }
+      return d;
+    }
+    if (b.t === 'table') {
+      const wrap = document.createElement('div');
+      wrap.className = 'sv-tablewrap';
+      const t = document.createElement('table');
+      t.className = 'sv-table';
+      const thead = document.createElement('thead');
+      thead.innerHTML = '<tr>' + b.head.map((h) => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
+      t.appendChild(thead);
+      const tb = document.createElement('tbody');
+      for (const r of b.rows) {
+        const tr = document.createElement('tr');
+        tr.className = 'sv-trow';
+        let html = '';
+        for (const cell of r.cells) html += this._cellHtml(cell);
+        const hasActions = r.actions && r.actions.length;
+        if (hasActions) html += '<td class="sv-acts"></td>';
+        tr.innerHTML = html;
+        if (hasActions) {
+          const actTd = tr.querySelector('.sv-acts');
+          for (const a of r.actions) {
+            const btn = document.createElement('button');
+            btn.className = 'sv-mini';
+            btn.textContent = a.label;
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              this._rowAction(a.kind, r.uid);
+            });
+            actTd.appendChild(btn);
+          }
+        }
+        if (r.uid) tr.addEventListener('click', () => this.openItem(r.uid));
+        else tr.classList.add('is-static');
+        tb.appendChild(tr);
+      }
+      t.appendChild(tb);
+      wrap.appendChild(t);
+      return wrap;
+    }
+    return document.createElement('div');
+  }
+
+  /** One table cell → HTML. `{rarity}` renders tier squares; else `{text, cls, up}`. */
+  _cellHtml(cell) {
+    if (cell.rarity) {
+      return `<td class="sv-rar sv-rar--${cell.rarity}">${tierSquares(cell.rarity)}${capitalize(cell.rarity)}</td>`;
+    }
+    const up = cell.up ? ` <span class="sv-up">+${cell.up}</span>` : '';
+    return `<td class="${cell.cls || ''}">${escapeHtml(cell.text || '')}${up}</td>`;
+  }
+
+  /** A table-row action button (Equip / Upgrade / Salvage). */
+  _rowAction(kind, uid) {
+    if (kind === 'equip') this.equipItem(uid);
+    else if (kind === 'upgrade') this.upgradeItem(uid);
+    else if (kind === 'salvage') this.salvageOne(uid);
   }
 
   // --- Terminal transcript (bottom) ---------------------------------------
@@ -805,15 +968,19 @@ export class Shell {
     this.term(`upgraded ${itemName(loc.item)} to +${res.level}  (-${res.cost.amount} ${res.cost.resource}${dup})`, 'is-ok');
   }
 
-  /** Salvage one inventory item by uid, then step back to the list. */
-  salvageOne(uid) {
+  /**
+   * Salvage one inventory item by uid. `navBack` steps back afterwards (used by
+   * the item-detail screen, whose item then no longer exists); table rows and
+   * `salvage <name>` leave the current screen in place (it re-renders live).
+   */
+  salvageOne(uid, navBack = false) {
     const res = salvageItem(uid);
     if (!res) {
       this.term('item not found in inventory', 'is-error');
       return;
     }
     this.term(`salvaged ${itemDisplayName(res.item)} -> +${res.yield.scrap} scrap, +${res.yield.essence} essence`, 'is-ok');
-    this.back();
+    if (navBack) this.back();
   }
 
   /** Bulk-salvage a rarity (or 'all') of inventory gear. */
@@ -1186,6 +1353,47 @@ export class Shell {
     this.term(`current: ${this.termRows}  (default ${DEFAULT_TERMLINES})`);
   }
 
+  // --- UI scale (zoom the sidebar + content, like browser zoom) -------------
+  _loadUiScale() {
+    let v = DEFAULT_UISCALE;
+    try {
+      const raw = parseFloat(localStorage.getItem(UISCALE_KEY));
+      if (Number.isFinite(raw)) v = raw;
+    } catch {
+      /* ignore */
+    }
+    this.uiScale = Math.min(MAX_UISCALE, Math.max(MIN_UISCALE, v));
+    this._applyUiScale();
+  }
+
+  _applyUiScale() {
+    document.documentElement.style.setProperty('--ui-scale', String(this.uiScale));
+  }
+
+  /** `uiscale <n>` — set the sidebar+content zoom (accepts 1.2 or 120%). */
+  setUiScale(input) {
+    const raw = String(input).trim();
+    let n = parseFloat(raw);
+    if (raw.endsWith('%')) n /= 100;
+    if (!Number.isFinite(n) || n < MIN_UISCALE || n > MAX_UISCALE) {
+      this.term(`enter a UI scale between ${MIN_UISCALE} and ${MAX_UISCALE}  (e.g. 1.2 or 120%)`, 'is-error');
+      return;
+    }
+    this.uiScale = Math.round(n * 100) / 100;
+    try {
+      localStorage.setItem(UISCALE_KEY, String(this.uiScale));
+    } catch {
+      /* ignore */
+    }
+    this._applyUiScale();
+    this.term(`UI scale: ${Math.round(this.uiScale * 100)}%`, 'is-ok');
+  }
+
+  uiScaleUsage() {
+    this.term('usage: uiscale <n>   (zoom the sidebar + content, e.g. 1.2 or 120%)', 'is-warn');
+    this.term(`current: ${Math.round((this.uiScale || 1) * 100)}%   (range ${MIN_UISCALE}-${MAX_UISCALE})`);
+  }
+
   async pingBackend() {
     const { apiBase } = getConfig();
     if (!apiBase) {
@@ -1230,4 +1438,18 @@ function escapeHtml(s) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+// Monochrome rarity marker: filled tier squares (common 1 … legendary 4).
+const RARITY_TIER = { common: 1, rare: 2, epic: 3, legendary: 4 };
+function tierSquares(rarity) {
+  const n = RARITY_TIER[rarity] || 1;
+  let s = '<span class="tier">';
+  for (let i = 0; i < 4; i += 1) s += `<i class="${i < n ? 'on' : ''}"></i>`;
+  return s + '</span>';
+}
+
+function capitalize(s) {
+  const str = String(s || '');
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
