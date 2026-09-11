@@ -132,6 +132,11 @@ const COMMANDS = [
     usage: 'uiscale [n]          zoom the sidebar + content (e.g. 1.2 or 120%)',
     run: (s, args, arg) => (arg ? s.setUiScale(arg) : s.uiScaleUsage()),
   },
+  {
+    names: ['framewidth', 'uiwidth'],
+    usage: 'framewidth [px|reset] set the UI width (or drag the right edge)',
+    run: (s, args, arg) => (arg ? s.setFrameWidth(arg) : s.frameWidthUsage()),
+  },
   { names: ['ping'], usage: 'ping                 check the configured backend', run: (s) => s.pingBackend() },
   {
     names: ['reset'],

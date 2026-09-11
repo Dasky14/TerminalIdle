@@ -126,10 +126,42 @@ body::after {
 }
 
 #app {
+  position: relative; /* positioning context for the frame-width handle */
   height: 100vh;
   height: 100dvh; /* dvh tracks the visible viewport (mobile chrome/keyboard) */
+  width: var(--shell-width, 100%); /* drag the right edge to shrink the UI */
+  max-width: 100%;
   padding: 10px 12px;
   background: radial-gradient(ellipse at 50% 42%, var(--bg2) 0%, var(--bg) 62%);
+}
+
+/* Right-edge drag handle: shrinks the UI, leaving empty space on the right to
+   park minigame windows without covering the menu. */
+.hresizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 10px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ew-resize;
+  z-index: 6;
+  touch-action: none;
+}
+.hgrip {
+  width: 3px;
+  height: 52px;
+  background: var(--line);
+  border-radius: 99px;
+}
+.hresizer:hover .hgrip {
+  background: var(--fg);
+  box-shadow: var(--glow);
+}
+:root[data-mobile="on"] .hresizer {
+  display: none;
 }
 
 #screen {

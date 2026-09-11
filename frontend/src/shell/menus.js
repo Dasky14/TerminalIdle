@@ -507,6 +507,11 @@ export function buildScreen(id, shell) {
             action: (s) => s.uiScaleUsage(),
           },
           {
+            label: 'Frame width',
+            hint: 'free space for game windows',
+            action: (s) => s.frameWidthUsage(),
+          },
+          {
             label: 'Terminal height',
             hint: 'lines shown in the terminal',
             action: (s) => s.termLinesUsage(),

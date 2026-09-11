@@ -76,6 +76,8 @@ const MAX_LINES = 50;
 const DEFAULT_UISCALE = 1;
 const MIN_UISCALE = 0.6;
 const MAX_UISCALE = 1.6;
+const FRAMEWIDTH_KEY = 'til.framewidth';
+const MIN_SHELL_WIDTH = 480; // px; below this the UI gets too cramped
 const ANIM_ON = ['on', 'enable', 'enabled', 'true', 'yes'];
 const ANIM_OFF = ['off', 'disable', 'disabled', 'false', 'no'];
 const PRINT_DELAY_MS = 12;
@@ -194,6 +196,11 @@ export class Shell {
 
     // UI scale (zoom) for the sidebar + main content.
     this._loadUiScale();
+
+    // Horizontal frame width — drag the right edge to shrink the UI and free
+    // empty space on the right for parking minigame windows.
+    this._loadFrameWidth();
+    this._wireFrameResizer();
 
     // Live screens (stats/inventory/...) redraw instantly when state changes.
     onChange(() => {
@@ -1558,6 +1565,91 @@ export class Shell {
   uiScaleUsage() {
     this.term('usage: uiscale <n>   (zoom the sidebar + content, e.g. 1.2 or 120%)', 'is-warn');
     this.term(`current: ${Math.round((this.uiScale || 1) * 100)}%   (range ${MIN_UISCALE}-${MAX_UISCALE})`);
+  }
+
+  // --- Frame width (drag the right edge; frees space for game windows) ------
+  _loadFrameWidth() {
+    let v = '100%';
+    try {
+      const raw = localStorage.getItem(FRAMEWIDTH_KEY);
+      if (raw && raw !== '100%') {
+        const n = parseInt(raw, 10);
+        if (Number.isFinite(n)) v = n;
+      }
+    } catch {
+      /* ignore */
+    }
+    this.frameWidth = v; // '100%' or a px number
+    this._applyFrameWidth();
+  }
+
+  _applyFrameWidth() {
+    const val = this.frameWidth === '100%' ? '100%' : `${this.frameWidth}px`;
+    document.documentElement.style.setProperty('--shell-width', val);
+  }
+
+  /** Create the right-edge drag handle on #app (once) and wire the drag. */
+  _wireFrameResizer() {
+    const app = document.getElementById('app');
+    if (!app || app.querySelector('.hresizer')) return;
+    const rz = document.createElement('div');
+    rz.className = 'hresizer';
+    rz.title = 'Drag to resize the UI width (free space for minigame windows)';
+    rz.innerHTML = '<span class="hgrip"></span>';
+    app.appendChild(rz);
+    let startX = 0;
+    let startW = 0;
+    const onMove = (e) => {
+      const max = window.innerWidth;
+      let w = startW + (e.clientX - startX);
+      w = Math.min(max, Math.max(MIN_SHELL_WIDTH, w));
+      this.frameWidth = w >= max - 4 ? '100%' : Math.round(w);
+      this._applyFrameWidth();
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      try {
+        localStorage.setItem(FRAMEWIDTH_KEY, String(this.frameWidth));
+      } catch {
+        /* ignore */
+      }
+    };
+    rz.addEventListener('pointerdown', (e) => {
+      startX = e.clientX;
+      startW = app.getBoundingClientRect().width;
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      e.preventDefault();
+    });
+  }
+
+  /** `framewidth <px | % | reset>` — set the UI width (or drag the right edge). */
+  setFrameWidth(input) {
+    const raw = String(input).trim().toLowerCase();
+    if (['reset', 'full', 'max', '100', '100%'].includes(raw)) {
+      this.frameWidth = '100%';
+    } else {
+      let n = parseFloat(raw);
+      if (raw.endsWith('%')) n = (n / 100) * window.innerWidth;
+      if (!Number.isFinite(n) || n < MIN_SHELL_WIDTH) {
+        this.term(`enter a width >= ${MIN_SHELL_WIDTH}px, a percent, or "reset"`, 'is-error');
+        return;
+      }
+      this.frameWidth = n >= window.innerWidth - 4 ? '100%' : Math.round(n);
+    }
+    try {
+      localStorage.setItem(FRAMEWIDTH_KEY, String(this.frameWidth));
+    } catch {
+      /* ignore */
+    }
+    this._applyFrameWidth();
+    this.term(`frame width: ${this.frameWidth === '100%' ? 'full' : this.frameWidth + 'px'}`, 'is-ok');
+  }
+
+  frameWidthUsage() {
+    this.term('usage: framewidth <px | % | reset>   (or drag the right edge)', 'is-warn');
+    this.term(`current: ${this.frameWidth === '100%' ? 'full' : this.frameWidth + 'px'}`);
   }
 
   async pingBackend() {
