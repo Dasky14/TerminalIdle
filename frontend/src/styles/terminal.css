@@ -1,39 +1,72 @@
-/* Authentic terminal styling. Theme via <html data-theme="green|amber|blue|white">. */
+/* Pip-Boy styled shell — Direction B (sidebar nav + dense content + dockable
+   Log/Terminal panel). Theme via <html data-theme="green|amber|blue|white">. */
+
+@import url("https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap");
 
 :root {
-  --bg: #060807;
-  --fg: #33ff66;
-  --fg-dim: #1c8a3d;
-  --fg-bright: #b9ffcf;
+  --bg: #02140a;
+  --bg2: #06301c;
+  --fg: #38ff87;
+  --fg-dim: #1a7a45;
+  --fg-mid: #24b061;
+  --fg-bright: #c9ffdd;
   --danger: #ff6b6b;
-  --warn: #ffd166;
-  --font: "Consolas", "SFMono-Regular", "Liberation Mono", "Menlo", "DejaVu Sans Mono",
+  --warn: #8dffb8;
+  --line: rgba(56, 255, 135, 0.55);
+  --line2: rgba(56, 255, 135, 0.2);
+  --fill-soft: rgba(56, 255, 135, 0.12);
+  --panel: rgba(7, 36, 20, 0.42);
+  --font: "Share Tech Mono", "Consolas", "SFMono-Regular", "Liberation Mono", "Menlo",
     monospace;
-  --glow: 0 0 5px rgba(51, 255, 102, 0.35);
-  --lh: 1.35; /* line-height multiplier, used to size panes by line count */
-  --term-lines: 14; /* terminal height in lines (set via `termlines`) */
-  --log-lines: 3; /* game log height in lines (set via `loglines`) */
+  --glow: 0 0 6px rgba(56, 255, 135, 0.45);
+  --lh: 1.4; /* line-height multiplier, used to size the dock by line count */
+  --term-lines: 8; /* dock height in lines (set via `termlines` / drag) */
+  --rail-w: 184px;
 }
 
 :root[data-theme="amber"] {
+  --bg: #140d02;
+  --bg2: #2f1f05;
   --fg: #ffb000;
-  --fg-dim: #a06806;
+  --fg-dim: #7a5406;
+  --fg-mid: #b07806;
   --fg-bright: #ffe6b0;
-  --glow: 0 0 5px rgba(255, 176, 0, 0.35);
+  --warn: #ffd98d;
+  --line: rgba(255, 176, 0, 0.55);
+  --line2: rgba(255, 176, 0, 0.2);
+  --fill-soft: rgba(255, 176, 0, 0.12);
+  --panel: rgba(40, 27, 6, 0.42);
+  --glow: 0 0 6px rgba(255, 176, 0, 0.4);
 }
 
 :root[data-theme="blue"] {
+  --bg: #02101a;
+  --bg2: #063048;
   --fg: #5fd7ff;
   --fg-dim: #2b7fa0;
+  --fg-mid: #3fa6cc;
   --fg-bright: #d6f4ff;
-  --glow: 0 0 5px rgba(95, 215, 255, 0.35);
+  --warn: #a9e9ff;
+  --line: rgba(95, 215, 255, 0.55);
+  --line2: rgba(95, 215, 255, 0.2);
+  --fill-soft: rgba(95, 215, 255, 0.12);
+  --panel: rgba(6, 40, 64, 0.42);
+  --glow: 0 0 6px rgba(95, 215, 255, 0.4);
 }
 
 :root[data-theme="white"] {
+  --bg: #070707;
+  --bg2: #1a1a1a;
   --fg: #d7d7d7;
   --fg-dim: #7a7a7a;
+  --fg-mid: #a0a0a0;
   --fg-bright: #ffffff;
-  --glow: 0 0 4px rgba(220, 220, 220, 0.25);
+  --warn: #e6e6e6;
+  --line: rgba(220, 220, 220, 0.5);
+  --line2: rgba(220, 220, 220, 0.18);
+  --fill-soft: rgba(220, 220, 220, 0.12);
+  --panel: rgba(26, 26, 26, 0.42);
+  --glow: 0 0 4px rgba(220, 220, 220, 0.3);
 }
 
 * {
@@ -51,101 +84,183 @@ body {
   color: var(--fg);
   font-family: var(--font);
   font-size: 15px;
-  line-height: 1.35;
+  line-height: 1.4;
+  letter-spacing: 0.3px;
   overflow: hidden;
   text-shadow: var(--glow);
 }
 
-/* Faint CRT scanlines + vignette. */
+/* CRT scanlines + vignette + a faint flicker (whole screen, minigames included). */
 body::after {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 5;
+  z-index: 50;
   background:
     repeating-linear-gradient(
       to bottom,
       rgba(0, 0, 0, 0) 0,
-      rgba(0, 0, 0, 0) 2px,
-      rgba(0, 0, 0, 0.12) 3px
+      rgba(0, 0, 0, 0) 1px,
+      rgba(0, 0, 0, 0.22) 2px,
+      rgba(0, 0, 0, 0.22) 3px
     ),
-    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.45) 100%);
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.5) 100%);
+  animation: til-flicker 4s steps(60) infinite;
+}
+@keyframes til-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  47% {
+    opacity: 0.98;
+  }
+  48% {
+    opacity: 0.92;
+  }
+  49% {
+    opacity: 0.99;
+  }
 }
 
 #app {
   height: 100vh;
   height: 100dvh; /* dvh tracks the visible viewport (mobile chrome/keyboard) */
-  padding: 8px 12px;
+  padding: 10px 12px;
+  background: radial-gradient(ellipse at 50% 42%, var(--bg2) 0%, var(--bg) 62%);
 }
 
-/* The shell's container must fill #app so the grid has a definite height to
-   divide; otherwise the menu row collapses to its content and grows as lines
-   print, dragging the panes below it. */
 #screen {
   height: 100%;
   min-height: 0;
 }
 
-/* Mobile view: constrain to a phone-width column (a no-op on real phones,
-   which are already narrow) and never scroll the menu horizontally. */
 :root[data-mobile="on"] #app {
-  max-width: 480px;
+  max-width: 520px;
   margin: 0 auto;
 }
-:root[data-mobile="on"] .term__out {
-  overflow-x: hidden;
-}
 
-/* Three stacked panes. The menu (top) takes the remaining space and scrolls
-   internally; the game log and terminal are pinned to fixed rows at the BOTTOM
-   so the menu's print animation can never push them around. */
+/* ---- Overall shell: sidebar + main on top, dock full-width at the bottom ---- */
 .shell {
   height: 100%;
   min-height: 0;
   display: grid;
-  /* Menu takes the remaining space; the game log and terminal are sized by
-     their line count (below), so they stay fixed and the menu gets the rest. */
-  grid-template-rows: minmax(0, 1fr) auto auto;
-  gap: 6px;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px;
 }
 
-.pane {
+/* Bracket-cornered frame, Pip-Boy style. */
+.pc {
+  position: relative;
+}
+.pc::before,
+.pc::after {
+  content: "";
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  pointer-events: none;
+  z-index: 3;
+}
+.pc::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid var(--fg);
+  border-left: 2px solid var(--fg);
+}
+.pc::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid var(--fg);
+  border-right: 2px solid var(--fg);
+}
+
+/* ---- Sidebar rail ---- */
+.rail {
+  grid-column: 1;
+  grid-row: 1;
+  border: 1.5px solid var(--line);
+  background: var(--panel);
+  padding: 8px;
   display: flex;
   flex-direction: column;
+  gap: 2px;
   min-height: 0;
-  min-width: 0; /* allow grid panes to shrink; labels/banners clip instead of
-                   widening the column */
 }
-
-.pane--gamelog {
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  padding-top: 4px;
-}
-
-.pane--term {
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  padding-top: 4px;
-}
-
-.pane__label {
-  flex: 0 0 auto;
-  color: var(--fg-dim);
-  font-size: 11px;
+.rail__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--fg);
+  color: var(--bg);
+  text-shadow: none;
   letter-spacing: 2px;
+  font-weight: 700;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.rail__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  min-height: 0;
+}
+.rail__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  cursor: pointer;
+  color: var(--fg);
   text-transform: uppercase;
-  margin-bottom: 2px;
-  overflow: hidden; /* clip the trailing dashes instead of overflowing the page */
+  letter-spacing: 1px;
   white-space: nowrap;
 }
-.pane__label::before {
-  content: "-- ";
+.rail__item:hover {
+  background: var(--fill-soft);
 }
-.pane__label::after {
-  content: " --------------------------------------------------------------";
+.rail__item.is-active {
+  background: var(--fg);
+  color: var(--bg);
+  text-shadow: none;
+}
+.rail__item.is-active .rail__hk {
+  color: var(--bg);
+}
+.rail__hk {
+  color: var(--fg-bright);
+}
+.rail__item svg {
+  flex: 0 0 auto;
+}
+.rail__foot {
+  margin-top: auto;
+  border-top: 1px solid var(--line2);
+  padding-top: 8px;
+  font-size: 12px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.rail__foot b {
+  color: var(--fg-bright);
 }
 
-/* --- Menu pane (printed screen output) --- */
+/* ---- Main content ---- */
+.main {
+  grid-column: 2;
+  grid-row: 1;
+  border: 1.5px solid var(--line);
+  background: var(--panel);
+  padding: 12px 14px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .term__out {
   flex: 1 1 auto;
   min-height: 0;
@@ -165,20 +280,23 @@ body::after {
 .term__line--hint {
   color: var(--fg-dim);
 }
+/* Screen title → a filled Pip-Boy header bar. */
 .term__line--head {
-  color: var(--fg-bright);
-  letter-spacing: 1px;
+  color: var(--bg);
+  background: var(--fg);
+  text-shadow: none;
+  letter-spacing: 3px;
+  font-weight: 700;
+  padding: 4px 10px;
+  margin: 0 0 4px;
 }
 .term__line--rule {
-  color: var(--fg-dim);
+  display: none; /* the filled header bar replaces the dashed rule */
 }
 .term__line--text {
   color: var(--fg);
 }
 
-/* Wrap real text lines so nothing gets clipped on narrow screens. The banner
-   and rule lines stay `pre` (base rule) so the ASCII art / dividers keep their
-   shape. */
 .term__line--text,
 .term__line--head,
 .term__line--dim,
@@ -187,14 +305,21 @@ body::after {
   overflow-wrap: anywhere;
 }
 
+/* Selectable menu items — inverted (solid fill) on hover, Pip-Boy style. */
 .term__line--item {
   cursor: pointer;
   color: var(--fg);
-  white-space: pre-wrap; /* long descriptions wrap instead of scrolling */
+  white-space: pre-wrap;
+  padding: 2px 6px;
 }
 .term__line--item:hover {
-  background: rgba(255, 255, 255, 0.09);
-  color: var(--fg-bright);
+  background: var(--fg);
+  color: var(--bg);
+  text-shadow: none;
+}
+.term__line--item:hover .term__num,
+.term__line--item:hover .term__ihint {
+  color: var(--bg);
 }
 .term__num {
   color: var(--fg-bright);
@@ -203,28 +328,122 @@ body::after {
   color: var(--fg-dim);
 }
 
-/* --- Game log (middle) --- */
-.gamelog {
-  flex: 0 0 auto;
-  height: calc(var(--log-lines) * var(--lh) * 1em);
-  overflow-y: auto;
-  font-size: 13px;
+/* ---- The dock: VS Code-style tabbed, resizable, collapsible panel ---- */
+.dock {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  border: 1.5px solid var(--line);
+  background: rgba(3, 20, 12, 0.85);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
-.gl__line {
-  white-space: pre-wrap;
+.dock__resizer {
+  height: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ns-resize;
+  flex: 0 0 auto;
+  touch-action: none;
+}
+.dock__grip {
+  width: 48px;
+  height: 3px;
+  background: var(--line);
+}
+.dock__resizer:hover .dock__grip {
+  background: var(--fg);
+  box-shadow: var(--glow);
+}
+.dock__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.dock[data-min="true"] .dock__bar {
+  border-bottom: 0;
+}
+.dock__tabs {
+  display: flex;
+}
+.dock__tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  border: 0;
+  color: var(--fg-dim);
+  font-family: var(--font);
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.dock__tab:hover {
   color: var(--fg);
 }
-.gl__line.is-ok {
-  color: var(--fg-bright);
+.dock__tab.is-active {
+  background: var(--fg);
+  color: var(--bg);
+  text-shadow: none;
 }
-.gl__empty {
+.dock__badge {
+  border: 1px solid currentColor;
+  font-size: 10px;
+  padding: 0 5px;
+  line-height: 14px;
+  letter-spacing: 0;
+}
+.dock__actions {
+  display: flex;
+  padding-right: 4px;
+}
+.dock__btn {
+  background: transparent;
+  border: 0;
   color: var(--fg-dim);
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
 }
-
-/* --- Terminal transcript (bottom) --- */
-.termout {
+.dock__btn:hover {
+  color: var(--fg-bright);
+  background: var(--fill-soft);
+}
+.dock__body {
   flex: 0 0 auto;
   height: calc(var(--term-lines) * var(--lh) * 1em);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dock[data-min="true"] .dock__body {
+  display: none;
+}
+.dock--max .dock__body {
+  height: 62vh;
+}
+.dock__pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 12px 8px;
+}
+.dock__pane[hidden] {
+  display: none;
+}
+
+/* Terminal transcript + game log share the dock body. */
+.termout,
+.gamelog {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   font-size: 14px;
 }
@@ -244,14 +463,26 @@ body::after {
 .term__tline.is-error {
   color: var(--danger);
 }
+.gl__line {
+  white-space: pre-wrap;
+  color: var(--fg);
+}
+.gl__line.is-ok {
+  color: var(--fg-bright);
+}
+.gl__empty {
+  color: var(--fg-dim);
+}
 
-/* Command line */
+/* Command line — lives in the Terminal tab. */
 .term__cmdline {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 4px;
+  border-top: 1px solid var(--line2);
+  padding-top: 5px;
 }
 .term__prompt {
   color: var(--fg-bright);
@@ -280,7 +511,6 @@ body::after {
 .term__cmdline:focus-within .term__blink {
   display: none;
 }
-
 @keyframes til-blink {
   0%,
   50% {
@@ -292,7 +522,46 @@ body::after {
   }
 }
 
-/* Smaller type on phones so more fits and the banner needs less scrolling. */
+/* ---- Mobile: stack the rail on top as a horizontal strip ---- */
+:root[data-mobile="on"] .shell {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+:root[data-mobile="on"] .rail {
+  grid-column: 1;
+  grid-row: 1;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 6px;
+}
+:root[data-mobile="on"] .rail__brand,
+:root[data-mobile="on"] .rail__foot {
+  display: none;
+}
+:root[data-mobile="on"] .rail__nav {
+  flex-direction: row;
+  gap: 4px;
+  overflow: visible;
+}
+:root[data-mobile="on"] .rail__item {
+  padding: 8px 10px;
+}
+:root[data-mobile="on"] .rail__item span:not(.rail__hk) {
+  display: none; /* icons + hotkey only, to fit the strip */
+}
+:root[data-mobile="on"] .main {
+  grid-column: 1;
+  grid-row: 2;
+}
+:root[data-mobile="on"] .dock {
+  grid-row: 3;
+}
+:root[data-mobile="on"] .term__out {
+  overflow-x: hidden;
+}
+
 @media (max-width: 700px) {
   body {
     font-size: 13px;
@@ -300,20 +569,22 @@ body::after {
   .term__line--banner {
     font-size: 10px;
   }
-  .termout {
-    font-size: 13px;
+  :root {
+    --rail-w: 150px;
   }
 }
 
 /* Thin phosphor scrollbars */
 .term__out::-webkit-scrollbar,
 .gamelog::-webkit-scrollbar,
+.rail__nav::-webkit-scrollbar,
 .termout::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 .term__out::-webkit-scrollbar-thumb,
 .gamelog::-webkit-scrollbar-thumb,
+.rail__nav::-webkit-scrollbar-thumb,
 .termout::-webkit-scrollbar-thumb {
   background: var(--fg-dim);
 }

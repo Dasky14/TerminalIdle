@@ -1,16 +1,20 @@
-// The shell: a three-part terminal UI.
+// The shell: a Pip-Boy styled UI with three regions.
 //
-//   1. MENU (top)      — numbered, clickable options + info (stats/inventory).
-//                        Redraws with a clear-then-print animation on navigation.
-//   2. GAME LOG (mid)  — a running feed of things happening in minigames
-//                        (XP, resources, items gained). Persists across menus.
-//   3. TERMINAL (bot)  — what you've typed and the system's responses. Does NOT
-//                        clear when the menu changes. The command input lives here.
+//   1. SIDEBAR (left)  — persistent top-level nav (Stats/Equipment/Inventory/
+//                        Resources/Games/System). Click a section to jump there;
+//                        the active section is highlighted (inverted).
+//   2. MAIN (right)    — the current screen: title bar, info, and numbered,
+//                        clickable options. Redraws with a clear-then-print
+//                        animation on navigation.
+//   3. DOCK (bottom)   — a VS Code-style tabbed panel with two tabs:
+//                        TERMINAL (typed commands + responses + the command
+//                        input) and LOG (the running minigame reward feed). The
+//                        dock can be drag-resized and minimized to a single bar.
 //
-// Navigation is by the terminal, not by letter hotkeys:
-//   - type an item's NUMBER and press Enter, or
-//   - type its NAME (partial or full), e.g. "inv" / "inventory", or
-//   - click the option in the menu.
+// Navigation options (all equivalent):
+//   - click a sidebar section, or a numbered option in the main pane, or
+//   - type an option's NUMBER and press Enter in the terminal, or
+//   - type its NAME (partial or full), e.g. "inv" / "inventory".
 
 import { buildScreen } from './menus.js';
 import { onChange, state } from '../game/state.js';
@@ -49,7 +53,8 @@ const ANIM_KEY = 'til.anim';
 const MOBILE_KEY = 'til.mobile';
 const TERMLINES_KEY = 'til.termlines';
 const LOGLINES_KEY = 'til.loglines';
-const DEFAULT_TERMLINES = 14;
+const DOCKMIN_KEY = 'til.dockmin';
+const DEFAULT_TERMLINES = 8;
 const DEFAULT_LOGLINES = 3;
 const MIN_LINES = 1;
 const MAX_LINES = 50;
@@ -62,6 +67,54 @@ const MAX_GAMELOG = 80;
 
 // Top-level screens reachable by name from anywhere in the terminal.
 const GLOBAL_SCREENS = ['stats', 'equipment', 'inventory', 'resources', 'games', 'system'];
+
+// --- Sidebar navigation ----------------------------------------------------
+// Simple stroke SVGs (16-24px grid, currentColor) so they recolor with theme.
+const ICON = {
+  logo: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 17l6-5-6-5"/><path d="M12 19h8"/></svg>',
+  stats: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
+  equipment: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z"/></svg>',
+  inventory: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg>',
+  resources: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18"/></svg>',
+  games: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="10" rx="5"/><path d="M7 10v4M5 12h4"/><circle cx="16" cy="11" r="1"/><circle cx="18" cy="14" r="1"/></svg>',
+  system: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>',
+  term: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-5-6-5"/><path d="M12 19h8"/></svg>',
+  log: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>',
+  clear: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>',
+  max: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 4H4v6M14 20h6v-6"/></svg>',
+  min: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>',
+  restore: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 15l6-6 6 6"/></svg>',
+};
+
+// The persistent sidebar entries (top-level sections). `key` is a decorative
+// hotkey hint; activation is by click (or by typing the name in the terminal).
+const NAV = [
+  { id: 'stats', key: 'S', label: 'Stats', icon: ICON.stats },
+  { id: 'equipment', key: 'E', label: 'Equipment', icon: ICON.equipment },
+  { id: 'inventory', key: 'I', label: 'Inventory', icon: ICON.inventory },
+  { id: 'resources', key: 'R', label: 'Resources', icon: ICON.resources },
+  { id: 'games', key: 'G', label: 'Games', icon: ICON.games },
+  { id: 'system', key: 'Y', label: 'System', icon: ICON.system },
+];
+
+// Which sidebar section a screen belongs to (for the active highlight).
+const SECTION_OF = {
+  stats: 'stats',
+  'stats-allocate': 'stats',
+  equipment: 'equipment',
+  'equip-slot': 'equipment',
+  inventory: 'inventory',
+  'inventory-cat': 'inventory',
+  'item-detail': 'inventory',
+  salvage: 'inventory',
+  autoscrap: 'inventory',
+  'autoscrap-type': 'inventory',
+  resources: 'resources',
+  games: 'games',
+  system: 'system',
+  settings: 'system',
+  'reset-confirm': 'system',
+};
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -126,23 +179,48 @@ export class Shell {
   }
 
   _buildChrome() {
+    const navHtml = NAV.map(
+      (n) =>
+        `<div class="rail__item" data-section="${n.id}">${n.icon}` +
+        `<span class="rail__hk">${n.key}</span><span>${n.label}</span></div>`,
+    ).join('');
+
     this.root.innerHTML = `
       <div class="shell">
-        <section class="pane pane--menu">
+        <aside class="rail pc">
+          <div class="rail__brand" data-home="1">${ICON.logo}<span>TERMINALIDLE</span></div>
+          <nav class="rail__nav">${navHtml}</nav>
+          <div class="rail__foot"></div>
+        </aside>
+        <main class="main pc">
           <div class="term__out" tabindex="-1"></div>
-        </section>
-        <section class="pane pane--gamelog">
-          <div class="pane__label">game log</div>
-          <div class="gamelog"></div>
-        </section>
-        <section class="pane pane--term">
-          <div class="pane__label">terminal</div>
-          <div class="termout"></div>
-          <div class="term__cmdline">
-            <span class="term__prompt">user@til:~$</span>
-            <span class="term__blink" aria-hidden="true"></span>
-            <input class="term__input" type="text" spellcheck="false"
-                   autocomplete="off" aria-label="command line" />
+        </main>
+        <section class="dock" data-min="false">
+          <div class="dock__resizer" title="Drag to resize"><span class="dock__grip"></span></div>
+          <div class="dock__bar">
+            <div class="dock__tabs">
+              <button class="dock__tab is-active" data-tab="terminal">${ICON.term}Terminal</button>
+              <button class="dock__tab" data-tab="log">${ICON.log}Log <span class="dock__badge" hidden>0</span></button>
+            </div>
+            <div class="dock__actions">
+              <button class="dock__btn" data-act="clear" title="Clear">${ICON.clear}</button>
+              <button class="dock__btn" data-act="max" title="Maximize panel">${ICON.max}</button>
+              <button class="dock__btn" data-act="min" title="Minimize panel">${ICON.min}</button>
+            </div>
+          </div>
+          <div class="dock__body">
+            <div class="dock__pane dock__pane--term" data-pane="terminal">
+              <div class="termout"></div>
+              <div class="term__cmdline">
+                <span class="term__prompt">user@til:~$</span>
+                <span class="term__blink" aria-hidden="true"></span>
+                <input class="term__input" type="text" spellcheck="false"
+                       autocomplete="off" aria-label="command line" />
+              </div>
+            </div>
+            <div class="dock__pane dock__pane--log" data-pane="log" hidden>
+              <div class="gamelog"></div>
+            </div>
           </div>
         </section>
       </div>
@@ -151,17 +229,200 @@ export class Shell {
     this.$gamelog = this.root.querySelector('.gamelog');
     this.$termout = this.root.querySelector('.termout');
     this.$input = this.root.querySelector('.term__input');
+    this.$rail = this.root.querySelector('.rail__nav');
+    this.$foot = this.root.querySelector('.rail__foot');
+    this.$dock = this.root.querySelector('.dock');
+    this.$badge = this.root.querySelector('.dock__badge');
 
-    // On desktop, clicking anywhere in the terminal focuses the input (unless
-    // the user is selecting text) for convenience. On touch we skip this so
-    // tapping a menu option doesn't reopen the keyboard. Minigame windows live
-    // outside this root, so this never steals focus from a running game.
+    // Dock state.
+    this.dockTab = 'terminal';
+    this.dockMax = false;
+    this.logUnread = 0;
+    this.dockMin = this._loadDockMin();
+    this._applyDockMin();
+    this._renderFoot();
+
+    // Sidebar nav → jump to that section (click; also typeable in the terminal).
+    this.$rail.querySelectorAll('.rail__item').forEach((el) =>
+      el.addEventListener('click', () => this.gotoSection(el.dataset.section)),
+    );
+    this.root.querySelector('.rail__brand').addEventListener('click', () => this.goRoot());
+
+    // Dock tabs + actions.
+    this.$dock.querySelectorAll('.dock__tab').forEach((t) =>
+      t.addEventListener('click', () => this.setDockTab(t.dataset.tab)),
+    );
+    this.$dock.querySelector('[data-act="clear"]').addEventListener('click', () => this._dockClear());
+    this.$dock.querySelector('[data-act="max"]').addEventListener('click', () => this.toggleDockMax());
+    this.$dock.querySelector('[data-act="min"]').addEventListener('click', () => this.toggleDockMin());
+    this._wireResizer();
+
+    // On desktop, clicking in the main/dock area focuses the input (unless the
+    // user is selecting text). On touch we skip this so tapping a menu option or
+    // a sidebar entry doesn't reopen the keyboard. Minigame windows live outside
+    // this root, so this never steals focus from a running game.
     if (!this.isTouch) {
       this.root.addEventListener('click', () => {
         const sel = window.getSelection && window.getSelection().toString();
-        if (!sel) this.$input.focus();
+        if (!sel && !this.dockMin && this.dockTab === 'terminal') this.$input.focus();
       });
     }
+  }
+
+  // --- Sidebar -------------------------------------------------------------
+  /** Jump straight to a top-level section from the sidebar. */
+  gotoSection(id) {
+    if (this.currentId === id) return;
+    this.stack = ['root', id];
+    this.render(true);
+  }
+
+  /** Highlight the sidebar entry matching the current screen's section. */
+  _updateSidebarActive() {
+    if (!this.$rail) return;
+    const sec = SECTION_OF[this.currentId] || null;
+    this.$rail.querySelectorAll('.rail__item').forEach((el) => {
+      el.classList.toggle('is-active', el.dataset.section === sec);
+    });
+  }
+
+  /** Render the sidebar footer (backend + save status). */
+  _renderFoot() {
+    if (!this.$foot) return;
+    const api = getConfig().apiBase;
+    this.$foot.innerHTML =
+      `BACKEND: <b>${api ? 'set' : 'offline'}</b><br>SAVE: <b>local</b>`;
+  }
+
+  // --- Dock (tabbed Log / Terminal panel) ---------------------------------
+  /** Show a dock tab ('terminal' | 'log'); un-minimizes if collapsed. */
+  setDockTab(tab) {
+    this.dockTab = tab;
+    if (this.dockMin) {
+      this.dockMin = false;
+      this._applyDockMin();
+    }
+    this.$dock.querySelectorAll('.dock__tab').forEach((t) =>
+      t.classList.toggle('is-active', t.dataset.tab === tab),
+    );
+    this.$dock.querySelectorAll('.dock__pane').forEach((p) => {
+      p.hidden = p.dataset.pane !== tab;
+    });
+    if (tab === 'log') {
+      this.logUnread = 0;
+      this._renderBadge();
+      this.$gamelog.scrollTop = this.$gamelog.scrollHeight;
+    } else {
+      this.$termout.scrollTop = this.$termout.scrollHeight;
+      if (!this.isTouch) this.$input.focus();
+    }
+  }
+
+  toggleDockMin() {
+    this.dockMin = !this.dockMin;
+    if (!this.dockMin && this.dockMax) {
+      // leaving minimize: keep whatever size was set
+    }
+    this._applyDockMin();
+    try {
+      localStorage.setItem(DOCKMIN_KEY, this.dockMin ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }
+
+  _applyDockMin() {
+    if (!this.$dock) return;
+    this.$dock.dataset.min = this.dockMin ? 'true' : 'false';
+    if (this.dockMin) {
+      this.dockMax = false;
+      this.$dock.classList.remove('dock--max');
+    }
+    const btn = this.$dock.querySelector('[data-act="min"]');
+    if (btn) {
+      btn.innerHTML = this.dockMin ? ICON.restore : ICON.min;
+      btn.title = this.dockMin ? 'Restore panel' : 'Minimize panel';
+    }
+  }
+
+  toggleDockMax() {
+    this.dockMax = !this.dockMax;
+    if (this.dockMax && this.dockMin) {
+      this.dockMin = false;
+      this._applyDockMin();
+    }
+    this.$dock.classList.toggle('dock--max', this.dockMax);
+  }
+
+  /** Clear whichever tab is showing. */
+  _dockClear() {
+    if (this.dockTab === 'log') {
+      this.gameLog = [];
+      this._renderGameLog();
+    } else {
+      this.clearTerm();
+    }
+  }
+
+  _renderBadge() {
+    if (!this.$badge) return;
+    if (this.logUnread > 0) {
+      this.$badge.textContent = String(this.logUnread);
+      this.$badge.hidden = false;
+    } else {
+      this.$badge.hidden = true;
+    }
+  }
+
+  _loadDockMin() {
+    try {
+      return localStorage.getItem(DOCKMIN_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  /** Drag the grip to resize the dock (height measured in lines). */
+  _wireResizer() {
+    const rz = this.$dock.querySelector('.dock__resizer');
+    const body = this.$dock.querySelector('.dock__body');
+    if (!rz || !body) return;
+    let startY = 0;
+    let startRows = 0;
+    let pxPerLine = 21;
+    const onMove = (e) => {
+      const dyUp = startY - e.clientY;
+      let rows = Math.round(startRows + dyUp / pxPerLine);
+      rows = Math.min(MAX_LINES, Math.max(MIN_LINES, rows));
+      if (rows !== this.termRows) {
+        this.termRows = rows;
+        this._applyLayout();
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      try {
+        localStorage.setItem(TERMLINES_KEY, String(this.termRows));
+      } catch {
+        /* ignore */
+      }
+    };
+    rz.addEventListener('pointerdown', (e) => {
+      // Resizing overrides a maximized dock.
+      if (this.dockMax) this.toggleDockMax();
+      if (this.dockMin) {
+        this.dockMin = false;
+        this._applyDockMin();
+      }
+      startY = e.clientY;
+      startRows = this.termRows;
+      const h = body.getBoundingClientRect().height;
+      pxPerLine = h > 0 && this.termRows > 0 ? h / this.termRows : 21;
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      e.preventDefault();
+    });
   }
 
   // --- Navigation ----------------------------------------------------------
@@ -229,6 +490,7 @@ export class Shell {
   // --- Rendering the menu pane --------------------------------------------
   async render(animate = true) {
     this.screen = buildScreen(this.currentId, this);
+    this._updateSidebarActive();
     const lines = this._composeLines();
     const gen = ++this._renderGen;
     this.$out.innerHTML = '';
@@ -238,10 +500,12 @@ export class Shell {
       for (const entry of lines) this.$out.appendChild(this._makeNode(entry));
       return;
     }
+    // Keep the top (title bar) in view while lines print in below it — the main
+    // pane is a screen, not a scrolling transcript.
+    this.$out.scrollTop = 0;
     for (const entry of lines) {
       if (gen !== this._renderGen) return;
       this.$out.appendChild(this._makeNode(entry));
-      this.$out.scrollTop = this.$out.scrollHeight;
       await sleep(entry.t === 'gap' ? 0 : PRINT_DELAY_MS);
     }
   }
@@ -325,10 +589,19 @@ export class Shell {
     this.$termout.scrollTop = this.$termout.scrollHeight;
   }
 
-  // --- Game log (middle) ---------------------------------------------------
+  // --- Game log (dock "Log" tab) ------------------------------------------
   logGame(text, cls = '') {
     this.gameLog.push({ text, cls });
     if (this.gameLog.length > MAX_GAMELOG) this.gameLog.shift();
+    this._renderGameLog();
+    // Badge unread entries while the Log tab isn't the one in view.
+    if (this.dockTab !== 'log' || this.dockMin) {
+      this.logUnread += 1;
+      this._renderBadge();
+    }
+  }
+
+  _renderGameLog() {
     this.$gamelog.innerHTML = this.gameLog
       .map((l) => `<div class="gl__line ${l.cls}">${escapeHtml(l.text)}</div>`)
       .join('');
@@ -887,26 +1160,30 @@ export class Shell {
   }
 
   setLogLines(input) {
+    // Log and Terminal now share one resizable dock, so this sets the dock
+    // height too (kept as a command for muscle memory / older scripts).
     const n = this._parseRows(input);
     if (n == null) return;
     this.logRows = n;
+    this.termRows = n;
     try {
       localStorage.setItem(LOGLINES_KEY, String(n));
+      localStorage.setItem(TERMLINES_KEY, String(n));
     } catch {
       /* ignore */
     }
     this._applyLayout();
-    this.term(`game log height: ${n} lines`, 'is-ok');
+    this.term(`dock height: ${n} lines  (log & terminal share the dock)`, 'is-ok');
   }
 
   termLinesUsage() {
-    this.term('usage: termlines <n>   (lines shown in the terminal)', 'is-warn');
+    this.term('usage: termlines <n>   (dock height in lines — or drag the dock grip)', 'is-warn');
     this.term(`current: ${this.termRows}  (default ${DEFAULT_TERMLINES})`);
   }
 
   logLinesUsage() {
-    this.term('usage: loglines <n>   (lines shown in the game log)', 'is-warn');
-    this.term(`current: ${this.logRows}  (default ${DEFAULT_LOGLINES})`);
+    this.term('usage: loglines <n>   (dock height in lines — log & terminal share the dock)', 'is-warn');
+    this.term(`current: ${this.termRows}  (default ${DEFAULT_TERMLINES})`);
   }
 
   async pingBackend() {
